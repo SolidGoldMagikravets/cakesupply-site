@@ -604,7 +604,7 @@ function showCustomizer(recommendation, visualHTML) {
 document.getElementById("back-btn").addEventListener("click", goBack);
 
 const fillingSelect = document.getElementById("filling");
-const tierLabels = document.querySelectorAll("#customizer-visual .tiered-visual .tier span");
+const tierLabels = document.querySelectorAll("#customizer-visual .tier span");
 const orderSections = document.getElementById("order-sections");
 
 // create ONE section (tiered cake)
