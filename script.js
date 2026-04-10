@@ -28,7 +28,7 @@ let tieredOptions = [
 
 const flavorPrices = {
   "Vanilla": 0,
-  "Chocolate": 9,
+  "Chocolate": 8,
   "Red Velvet": 12,
   "Lemon": 10
 };
@@ -40,6 +40,24 @@ const fillingPrices = {
   "Strawberry": 10,
   "Lemon Curd": 12,
   "Cream Cheese": 8
+};
+
+const signatureFlavors = {
+  "strawberry-key-lime": {
+    cake: "Vanilla",
+    frosting: "Strawberry Cream Cheese",
+    filling: "Key Lime Curd"
+  },
+  "chocolate-raspberry": {
+    cake: "Chocolate",
+    frosting: "Chocolate Buttercream",
+    filling: "Raspberry"
+  },
+  "lemon-berry": {
+    cake: "Lemon",
+    frosting: "Vanilla Buttercream",
+    filling: "Strawberry"
+  }
 };
 
 const baseCakePrices = {
@@ -573,44 +591,92 @@ function showCustomizer(recommendation, visualHTML) {
     </div>
 
     <div id="customizer-right">
-      <div class="customizer-panel">
-        <h3>Customize Tier</h3>
+  <div class="customizer-panel">
+    <h3>Customize Tier</h3>
 
-        <label for="tier-flavor">Flavor</label>
-        <select id="tier-flavor">
-          <option value="">Select flavor</option>
-          <option>Vanilla</option>
-          <option>Chocolate</option>
-          <option>Red Velvet</option>
-          <option>Lemon</option>
-        </select>
+    <label for="signature-flavor">Signature Flavor</label>
+    <select id="signature-flavor">
+      <option value="">Select signature flavor</option>
+      <option value="strawberry-key-lime">Strawberry Key Lime</option>
+      <option value="chocolate-raspberry">Chocolate Raspberry</option>
+      <option value="lemon-berry">Lemon Berry</option>
+    </select>
 
-        <label for="filling">Filling</label>
-        <select id="filling">
-          <option value="">Select filling</option>
-          <option>Vanilla Buttercream</option>
-          <option>Chocolate Ganache</option>
-          <option>Raspberry</option>
-          <option>Strawberry</option>
-          <option>Lemon Curd</option>
-          <option>Cream Cheese</option>
-        </select>
-      </div>
-    </div>
+    <p class="or-divider">OR</p>
+
+    <label for="tier-flavor">Choose Cake</label>
+    <select id="tier-flavor">
+      <option value="">Select cake</option>
+      <option>Vanilla</option>
+      <option>Chocolate</option>
+      <option>Red Velvet</option>
+      <option>Lemon</option>
+    </select>
+
+    <label for="tier-frosting">Choose Frosting</label>
+    <select id="tier-frosting">
+      <option value="">Select frosting</option>
+      <option>Vanilla Buttercream</option>
+      <option>Strawberry Cream Cheese</option>
+      <option>Chocolate Buttercream</option>
+      <option>Cream Cheese</option>
+    </select>
+
+    <label for="filling">Choose Filling</label>
+    <select id="filling">
+      <option value="">Select filling</option>
+      <option>Chocolate Ganache</option>
+      <option>Raspberry</option>
+      <option>Strawberry</option>
+      <option>Lemon Curd</option>
+      <option>Key Lime Curd</option>
+    </select>
+  </div>
+</div>
 
   </div>
 `;
 
 document.getElementById("back-btn").addEventListener("click", goBack);
 
+const signatureSelect = document.getElementById("signature-flavor");
+const tierFlavorSelect = document.getElementById("tier-flavor");
+const frostingSelect = document.getElementById("tier-frosting");
 const fillingSelect = document.getElementById("filling");
-const tierLabels = document.querySelectorAll("#customizer-visual .tiered-visual .tier span");
+
+function clearSignatureForActiveTier() {
+  if (activeTierIndex === null) return;
+  selections[activeTierIndex].signature = "";
+  signatureSelect.value = "";
+}
+
+signatureSelect.addEventListener("change", function () {
+  if (activeTierIndex === null) return;
+
+  const preset = signatureFlavors[this.value];
+  if (!preset) return;
+
+  selections[activeTierIndex].signature = this.value;
+
+  tierFlavorSelect.value = preset.cake;
+  frostingSelect.value = preset.frosting;
+  fillingSelect.value = preset.filling;
+
+  tierFlavorSelect.dispatchEvent(new Event("change"));
+  frostingSelect.dispatchEvent(new Event("change"));
+  fillingSelect.dispatchEvent(new Event("change"));
+});
+
+const isCombo = recommendation.type === "tiered-round-backup";
+
+const tierLabels = isCombo
+  ? document.querySelectorAll("#customizer-visual .tiered-visual .tier span")
+  : document.querySelectorAll("#customizer-visual .tier span");
+
 const orderSections = document.getElementById("order-sections");
 
-// create ONE section (tiered cake)
+// create ONE section
 const section = document.createElement("div");
-
-const isCombo = recommendation.type === "tiered-round-backup"; // 👈 ADD THIS
 
 section.classList.add("order-section");
 
@@ -635,9 +701,7 @@ if (isCombo) {
 
 if (isCombo && backupSection) {
   const backupList = backupSection.querySelector(".backup-list");
-
   const sizes = recommendation.name.match(/\d+/g).map(Number);
-
   const backupSize = sizes[sizes.length - 1];
 
  const backupRow = document.createElement("div");
@@ -645,8 +709,9 @@ backupRow.classList.add("tier-summary");
 backupRow.dataset.index = tierLabels.length;
 
 backupRow.innerHTML = `
-  <p><strong data-type=" - backup">${backupSize}"</strong></p>
-  <p>Flavor: <span class="backup-flavor-value">-</span></p>
+  <p><strong>${backupSize}" - backup</strong></p>
+  <p>Cake: <span class="backup-flavor-value">-</span></p>
+  <p>Frosting: <span class="backup-frosting-value">-</span></p>
   <p>Filling: <span class="backup-filling-value">-</span></p>
 `;
 
@@ -664,7 +729,8 @@ tierLabels.forEach((label, index) => {
 
   tierRow.innerHTML = `
     <p><strong data-type=" - tier">${label.textContent}</strong></p>
-    <p>Flavor: <span class="tier-flavor-value">-</span></p>
+    <p>Cake: <span class="tier-flavor-value">-</span></p>
+    <p>Frosting: <span class="tier-frosting-value">-</span></p>
     <p>Filling: <span class="tier-filling-value">-</span></p>
   `;
 
@@ -674,10 +740,16 @@ tierLabels.forEach((label, index) => {
 });
 
 const tierDivs = document.querySelectorAll("#customizer-visual .tier, #customizer-visual .combo-visual > .tier");
+
 const flavorLines = document.querySelectorAll(".tier-flavor-value");
 const backupFlavorLine = document.querySelector(".backup-flavor-value");
+
 const fillingLines = document.querySelectorAll(".tier-filling-value");
 const backupFillingLine = document.querySelector(".backup-filling-value");
+
+const frostingLines = document.querySelectorAll(".tier-frosting-value");
+const backupFrostingLine = document.querySelector(".backup-frosting-value");
+
 const tierRows = document.querySelectorAll(".tier-summary");
 
 let activeTierIndex = null;
@@ -687,10 +759,12 @@ const priceTotal = document.getElementById("price-total");
 const selections = Array.from(tierRows).map(row => {
   const label = row.querySelector("strong").textContent.trim();
   return {
-    label,
-    flavor: "",
-    filling: ""
-  };
+  label,
+  flavor: "",
+  frosting: "",
+  filling: "",
+  signature: ""
+};
 });
 
 function updatePrice() {
@@ -714,21 +788,16 @@ tierDivs.forEach((tier, index) => {
     const isBackupCake =
       isCombo && tier.parentElement.classList.contains("combo-visual");
 
-    if (isBackupCake) {
-      tierFlavorSelect.value = selections[index].flavor || "";
-        fillingSelect.value = selections[index].filling || "";
-    } else {
-      tierFlavorSelect.value = selections[index].flavor || "";
-        fillingSelect.value = selections[index].filling || "";
-    }
+    tierFlavorSelect.value = selections[index].flavor || "";
+    frostingSelect.value = selections[index].frosting || "";
+    fillingSelect.value = selections[index].filling || "";
+    signatureSelect.value = selections[index].signature || "";
   });
 });
 
 if (tierDivs.length > 0) {
   tierDivs[0].click();
 }
-
-const tierFlavorSelect = document.getElementById("tier-flavor");
 
 tierFlavorSelect.addEventListener("change", function () {
 
@@ -764,6 +833,21 @@ if (isCombo && tierDivs[selectedIndex].parentElement.classList.contains("combo-v
 updatePrice();
 });
 
+frostingSelect.addEventListener("change", function () {
+  if (activeTierIndex === null) return;
+
+  const label = this.value || "-";
+
+  if (isCombo && tierDivs[activeTierIndex].parentElement.classList.contains("combo-visual")) {
+    if (backupFrostingLine) backupFrostingLine.innerHTML = label;
+    selections[activeTierIndex].frosting = this.value || "";
+  } else {
+    frostingLines[activeTierIndex].innerHTML = label;
+    selections[activeTierIndex].frosting = this.value || "";
+  }
+
+  updatePrice();
+});
 
 fillingSelect.addEventListener("change", function () {
   if (activeTierIndex === null) return;
