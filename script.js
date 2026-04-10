@@ -28,7 +28,7 @@ let tieredOptions = [
 
 const flavorPrices = {
   "Vanilla": 0,
-  "Chocolate": 8,
+  "Chocolate": 9,
   "Red Velvet": 12,
   "Lemon": 10
 };
