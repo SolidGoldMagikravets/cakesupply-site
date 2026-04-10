@@ -29,17 +29,24 @@ let tieredOptions = [
 const flavorPrices = {
   "Vanilla": 0,
   "Chocolate": 8,
-  "Red Velvet": 12,
-  "Lemon": 10
+  "Red Velvet": 10,
+  "Lemon": 8
 };
 
 const fillingPrices = {
   "Vanilla Buttercream": 0,
-  "Chocolate Ganache": 10,
-  "Raspberry": 12,
-  "Strawberry": 10,
-  "Lemon Curd": 12,
+  "Chocolate Ganache": 5,
+  "Raspberry": 5,
+  "Strawberry": 3,
+  "Lemon Curd": 7,
   "Cream Cheese": 8
+};
+
+const frostingPrices = {
+  "Vanilla Buttercream": 0,
+  "Strawberry Cream Cheese": 0,
+  "Chocolate Buttercream": 0,
+  "Cream Cheese": 5
 };
 
 const signatureFlavors = {
@@ -124,6 +131,7 @@ function calculateCustomizationPrice(selections) {
 
   selections.forEach(selection => {
     total += flavorPrices[selection.flavor] || 0;
+    total += frostingPrices[selection.frosting] || 0;
     total += fillingPrices[selection.filling] || 0;
   });
 
@@ -644,19 +652,33 @@ const tierFlavorSelect = document.getElementById("tier-flavor");
 const frostingSelect = document.getElementById("tier-frosting");
 const fillingSelect = document.getElementById("filling");
 
+let applyingSignaturePreset = false;
+
 function clearSignatureForActiveTier() {
   if (activeTierIndex === null) return;
+  if (applyingSignaturePreset) return;
+
   selections[activeTierIndex].signature = "";
   signatureSelect.value = "";
+
+  updateTierTitle(activeTierIndex);
 }
 
 signatureSelect.addEventListener("change", function () {
   if (activeTierIndex === null) return;
 
   const preset = signatureFlavors[this.value];
-  if (!preset) return;
+
+  if (!preset) {
+    selections[activeTierIndex].signature = "";
+    updateTierTitle(activeTierIndex);
+    return;
+}
 
   selections[activeTierIndex].signature = this.value;
+  updateTierTitle(activeTierIndex);
+
+  applyingSignaturePreset = true;
 
   tierFlavorSelect.value = preset.cake;
   frostingSelect.value = preset.frosting;
@@ -665,6 +687,8 @@ signatureSelect.addEventListener("change", function () {
   tierFlavorSelect.dispatchEvent(new Event("change"));
   frostingSelect.dispatchEvent(new Event("change"));
   fillingSelect.dispatchEvent(new Event("change"));
+
+  applyingSignaturePreset = false;
 });
 
 const isCombo = recommendation.type === "tiered-round-backup";
@@ -709,10 +733,12 @@ backupRow.classList.add("tier-summary");
 backupRow.dataset.index = tierLabels.length;
 
 backupRow.innerHTML = `
-  <p><strong>${backupSize}" - backup</strong></p>
-  <p>Cake: <span class="backup-flavor-value">-</span></p>
-  <p>Frosting: <span class="backup-frosting-value">-</span></p>
-  <p>Filling: <span class="backup-filling-value">-</span></p>
+  <p><strong><span class="tier-title">${backupSize}" Backup</span></strong></p>
+  <div class="tier-details">
+    <p>Cake: <span class="backup-flavor-value">-</span></p>
+    <p>Frosting: <span class="backup-frosting-value">-</span></p>
+    <p>Filling: <span class="backup-filling-value">-</span></p>
+  </div>
 `;
 
 backupRow.addEventListener("click", () => tierDivs[tierLabels.length].click());
@@ -728,11 +754,13 @@ tierLabels.forEach((label, index) => {
   tierRow.dataset.index = index;
 
   tierRow.innerHTML = `
-    <p><strong data-type=" - tier">${label.textContent}</strong></p>
+  <p><strong><span class="tier-title">${label.textContent} Round</span></strong></p>
+  <div class="tier-details">
     <p>Cake: <span class="tier-flavor-value">-</span></p>
     <p>Frosting: <span class="tier-frosting-value">-</span></p>
     <p>Filling: <span class="tier-filling-value">-</span></p>
-  `;
+  </div>
+`;
 
   tierRow.addEventListener("click", () => tierDivs[index].click());
 
@@ -751,26 +779,47 @@ const frostingLines = document.querySelectorAll(".tier-frosting-value");
 const backupFrostingLine = document.querySelector(".backup-frosting-value");
 
 const tierRows = document.querySelectorAll(".tier-summary");
+const tierTitles = document.querySelectorAll(".tier-title");
 
 let activeTierIndex = null;
 
 const priceTotal = document.getElementById("price-total");
 
 const selections = Array.from(tierRows).map(row => {
-  const label = row.querySelector("strong").textContent.trim();
+  const titleEl = row.querySelector(".tier-title");
+  const label = titleEl ? titleEl.textContent.trim() : row.querySelector("strong").textContent.trim();
+
   return {
-  label,
-  flavor: "",
-  frosting: "",
-  filling: "",
-  signature: ""
-};
+    label,
+    flavor: "",
+    frosting: "",
+    filling: "",
+    signature: ""
+  };
 });
 
 function updatePrice() {
   const base = getBasePrice(recommendation);
   const extras = calculateCustomizationPrice(selections);
   priceTotal.textContent = base + extras;
+}
+
+function updateTierTitle(index) {
+  const baseLabel = selections[index].label;
+  const titleEl = tierTitles[index];
+
+  if (!titleEl) return;
+
+  if (selections[index].signature) {
+    const prettyName = selections[index].signature
+      .split("-")
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+
+    titleEl.innerHTML = `${baseLabel} <span class="signature-name">- ${prettyName}</span>`;
+  } else {
+    titleEl.textContent = baseLabel;
+  }
 }
 
 tierDivs.forEach((tier, index) => {
@@ -802,6 +851,8 @@ if (tierDivs.length > 0) {
 tierFlavorSelect.addEventListener("change", function () {
 
   if (activeTierIndex === null) return;
+
+  clearSignatureForActiveTier();
 
   const selectedIndex = activeTierIndex;
 
@@ -836,7 +887,15 @@ updatePrice();
 frostingSelect.addEventListener("change", function () {
   if (activeTierIndex === null) return;
 
-  const label = this.value || "-";
+  clearSignatureForActiveTier();
+
+  const price = frostingPrices[this.value] || 0;
+
+  const label = this.value
+    ? price > 0
+      ? `${this.value} <span class="price-inline">+$${price}</span>`
+      : this.value
+    : "-";
 
   if (isCombo && tierDivs[activeTierIndex].parentElement.classList.contains("combo-visual")) {
     if (backupFrostingLine) backupFrostingLine.innerHTML = label;
@@ -852,7 +911,9 @@ frostingSelect.addEventListener("change", function () {
 fillingSelect.addEventListener("change", function () {
   if (activeTierIndex === null) return;
 
-const price = fillingPrices[this.value] || 0;
+  clearSignatureForActiveTier();
+
+  const price = fillingPrices[this.value] || 0;
 
 const label = this.value
   ? price > 0

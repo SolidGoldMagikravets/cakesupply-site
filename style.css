@@ -365,12 +365,12 @@ img {
   color: #6495ed; /* tier titles */
 }
 
-.tier-summary p:not(:first-child) {
-  color: #4d4d4d; /* Flavor + Filling */
+.tier-summary > p:not(:first-child) {
+  color: #4d4d4d;
 }
 
-.tier-summary span {
-  color: #222; /* darker for selected values */
+.tier-summary span:not(.tier-title):not(.signature-name) {
+  color: #222;
   font-weight: 500;
 }
 
@@ -399,4 +399,29 @@ img {
   font-size: 0.9em;
   position: absolute;
   right: 0;
+}
+
+.tier-title {
+  color: #6495ed; /* cornflower blue */
+}
+
+.tier-details {
+  padding-left: 14px;
+}
+
+.tier-details p {
+  margin: 3px 0;
+  font-size: 15px;
+  color: #7a7f8c;
+}
+
+.tier-details span {
+  font-weight: 600;
+  color: #5f6b7a;
+}
+
+.signature-name {
+  color: #7a7f8c;
+  font-weight: normal;
+  margin-left: 4px;
 }
