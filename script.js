@@ -1,3 +1,384 @@
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const cakeModel = document.getElementById("cake-model");
+
+let cake3DMaterials = {
+  cake: null,
+  frosting: null,
+  filling: null
+};
+
+if (cakeModel) {
+  cakeModel.addEventListener("load", () => {
+    console.log("3D cake loaded!");
+
+    console.log("Materials:");
+    cakeModel.model.materials.forEach((mat, index) => {
+      console.log(index, mat.name);
+
+      if (mat.name === "cake_mat") cake3DMaterials.cake = mat;
+      if (mat.name === "frosting_mat") cake3DMaterials.frosting = mat;
+      if (mat.name === "filling_mat") cake3DMaterials.filling = mat;
+    });
+
+    if (cake3DMaterials.frosting) {
+      cake3DMaterials.frosting.pbrMetallicRoughness.setBaseColorFactor([1, 0.6, 0.7, 1]);
+    }
+  });
+}
+
+const modelMap = {};
+
+function getCustomizerVisualHTML(recommendation) {
+  const modelSrc = modelMap[recommendation.name];
+
+  // TIERED + ROUND BACKUP
+  if (recommendation.type === "tiered-round-backup") {
+    let allSizes = recommendation.name.match(/\d+/g).map(Number);
+    let tierSizes = allSizes.slice(0, -1).sort((a, b) => a - b);
+    let backupSize = allSizes[allSizes.length - 1];
+
+    let tieredName = `${tierSizes.map(size => `${size}"`).join(' + ')} tiered cake`;
+    let backupName = `${backupSize}" cake`;
+
+    let tieredSrc = modelMap[tieredName];
+    let backupSrc = modelMap[backupName];
+
+    let html = `<div class="combo-visual combo-3d">`;
+
+    if (tieredSrc) {
+      html += `
+        <model-viewer
+          class="option-cake-3d main-cake-3d"
+          src="${tieredSrc}"
+          alt="${tieredName}"
+          camera-controls
+          auto-rotate
+          disable-zoom>
+        </model-viewer>
+      `;
+    }
+
+    if (backupSrc) {
+      html += `
+        <model-viewer
+          class="option-cake-3d backup-cake-3d"
+          src="${backupSrc}"
+          alt="${backupName}"
+          camera-controls
+          auto-rotate
+          disable-zoom>
+        </model-viewer>
+      `;
+    }
+
+    html += `</div>`;
+    return html;
+  }
+
+  // single or tiered model
+  if (modelSrc) {
+    return `
+      <model-viewer
+        class="option-cake-3d"
+        src="${modelSrc}"
+        alt="${recommendation.name}"
+        camera-controls
+        auto-rotate
+        disable-zoom>
+      </model-viewer>
+    `;
+  }
+
+  return `<div class="single-visual"><div class="tier">Preview unavailable</div></div>`;
+}
+
+function getRecommendationParts(recommendation) {
+  const sizes = (recommendation.name.match(/\d+/g) || []).map(Number);
+
+  if (recommendation.type === "single") {
+    return [
+      {
+        kind: "main",
+        size: sizes[0],
+        label: `${sizes[0]}" Round`
+      }
+    ];
+  }
+
+  if (recommendation.type === "tiered") {
+    return sizes.map(size => ({
+      kind: "main",
+      size,
+      label: `${size}" Round`
+    }));
+  }
+
+  if (recommendation.type === "tiered-round-backup") {
+    const tierSizes = sizes.slice(0, -1);
+    const backupSize = sizes[sizes.length - 1];
+
+    return [
+      ...tierSizes.map(size => ({
+        kind: "main",
+        size,
+        label: `${size}" Round`
+      })),
+      {
+        kind: "backup",
+        size: backupSize,
+        label: `${backupSize}" Backup`
+      }
+    ];
+  }
+
+  if (recommendation.type === "sheet-combo") {
+    const roundSize = sizes[0];
+
+    return [
+      {
+        kind: "main",
+        size: roundSize,
+        label: `${roundSize}" Round`
+      },
+      {
+        kind: "backup",
+        size: null,
+        label: "Sheet Backup"
+      }
+    ];
+  }
+
+  return [];
+}
+
+function makeOptionModelViewer(src, altText) {
+  const viewer = document.createElement("model-viewer");
+  viewer.classList.add("option-cake-3d");
+  viewer.setAttribute("src", src);
+  viewer.setAttribute("alt", altText);
+  viewer.setAttribute("camera-controls", "");
+  viewer.setAttribute("auto-rotate", "");
+  viewer.setAttribute("disable-zoom", "");
+  return viewer;
+}
+
+let scene, camera, renderer, loader;
+let cakeObjects = [];
+
+function initCakeBuilder3D(recommendation) {
+  const container = document.getElementById("cake-builder-3d");
+
+  container.innerHTML = "";
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf8f8f8);
+
+  camera = new THREE.PerspectiveCamera(
+    45,
+    container.clientWidth / 400,
+    0.1,
+    100
+  );
+
+  camera.position.set(0, 0.6, 2.2);
+  camera.lookAt(0, 0.4, 0);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(container.clientWidth, 400);
+  container.appendChild(renderer.domElement);
+
+  loader = new GLTFLoader();
+
+  const light = new THREE.DirectionalLight(0xffffff, 1.5);
+  light.position.set(3, 5, 3);
+  scene.add(light);
+
+  const ambient = new THREE.AmbientLight(0xffffff, 1);
+  scene.add(ambient);
+
+  const sizes = getRecommendationSizes(recommendation);
+
+  buildCake3D(sizes);
+
+  animate();
+}
+
+function getRecommendationSizes(recommendation) {
+  return (recommendation.name.match(/\d+/g) || [])
+    .map(Number)
+    .sort((a, b) => b - a);
+}
+
+async function buildCake3D(sizes) {
+  let currentHeight = 0;
+
+  for (let size of sizes) {
+    const gltf = await new Promise((resolve) => {
+      loader.load(`models/tier_${size}.glb`, resolve);
+    });
+
+    const tier = gltf.scene;
+
+    const box = new THREE.Box3().setFromObject(tier);
+    const height = box.max.y - box.min.y;
+
+    tier.position.y = currentHeight;
+
+    scene.add(tier);
+    cakeObjects.push(tier);
+
+    currentHeight += height;
+  }
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+
+function initRecommendationCake3D(container, recommendation) {
+  container.innerHTML = "";
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf8f8f8);
+
+  const width = container.clientWidth || 340;
+const height = container.clientHeight || 400;
+
+const camera = new THREE.PerspectiveCamera(32, width / height, 0.1, 100);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(width, height);
+container.appendChild(renderer.domElement);
+
+  const light = new THREE.DirectionalLight(0xffffff, 2.2);
+  light.position.set(3, 5, 3);
+  scene.add(light);
+
+  const fillLight = new THREE.DirectionalLight(0xffffff, 1.1);
+  fillLight.position.set(-3, 3, 3);
+  scene.add(fillLight);
+
+  const ambient = new THREE.AmbientLight(0xffffff, 1.35);
+  scene.add(ambient);
+
+  const allSizes = (recommendation.name.match(/\d+/g) || []).map(Number);
+
+  let mainSizes = allSizes.slice().sort((a, b) => b - a);
+  let backupSize = null;
+
+  if (recommendation.type === "tiered-round-backup") {
+    mainSizes = allSizes.slice(0, -1).sort((a, b) => b - a);
+    backupSize = allSizes[allSizes.length - 1];
+  }
+
+  buildRecommendationCake3D(scene, mainSizes, backupSize).then((group) => {
+    const box = new THREE.Box3().setFromObject(group);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+
+    box.getSize(size);
+    box.getCenter(center);
+
+    const padding = 1.24;
+
+    const fov = THREE.MathUtils.degToRad(camera.fov);
+    const aspect = width / height;
+
+    const fitHeightDistance = (size.y * padding) / (2 * Math.tan(fov / 2));
+
+    const fitWidthDistance =
+      (size.x * padding) / (2 * Math.tan(fov / 2) * aspect);
+
+    const distance = Math.max(fitHeightDistance, fitWidthDistance, 1.2);
+
+    camera.position.set(center.x, center.y + size.y * 0.16, center.z + distance);
+    camera.lookAt(center.x, center.y - size.y * 0.02, center.z);
+  });
+
+  function animateCard() {
+    requestAnimationFrame(animateCard);
+    renderer.render(scene, camera);
+  }
+
+  animateCard();
+}
+
+async function buildRecommendationCake3D(scene, mainSizes, backupSize = null) {
+  const localLoader = new GLTFLoader();
+
+  const group = new THREE.Group();
+  scene.add(group);
+
+  let currentHeight = 0;
+  let maxMainRadius = 0;
+
+  for (let sizeValue of mainSizes) {
+    const gltf = await new Promise((resolve, reject) => {
+      localLoader.load(`models/tier_${sizeValue}.glb`, resolve, undefined, reject);
+    });
+
+    const tier = gltf.scene;
+
+    tier.traverse((child) => {
+      if (child.isMesh && child.material) {
+        child.material = child.material.clone();
+        child.material.roughness = 0.6;
+        child.material.metalness = 0.0;
+      }
+    });
+
+    const box = new THREE.Box3().setFromObject(tier);
+    const height = box.max.y - box.min.y;
+    const width = box.max.x - box.min.x;
+
+    const radius = width / 2;
+    if (radius > maxMainRadius) maxMainRadius = radius;
+
+    tier.position.set(0, currentHeight, 0);
+    group.add(tier);
+
+    currentHeight += height;
+  }
+
+  if (backupSize) {
+    const backupGltf = await new Promise((resolve, reject) => {
+      localLoader.load(`models/tier_${backupSize}.glb`, resolve, undefined, reject);
+    });
+
+    const backupTier = backupGltf.scene;
+
+    backupTier.traverse((child) => {
+      if (child.isMesh && child.material) {
+        child.material = child.material.clone();
+        child.material.roughness = 0.6;
+        child.material.metalness = 0.0;
+      }
+    });
+
+    const backupBox = new THREE.Box3().setFromObject(backupTier);
+    const backupWidth = backupBox.max.x - backupBox.min.x;
+    const backupRadius = backupWidth / 2;
+
+    const sideOffset = maxMainRadius + backupRadius + 0.06;
+    backupTier.position.set(sideOffset, 0, 0);
+    group.add(backupTier);
+  }
+
+  const box = new THREE.Box3().setFromObject(group);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+
+  group.position.x -= center.x;
+  group.position.z -= center.z;
+  group.position.y -= box.min.y;
+
+  return group;
+}
+
 document.getElementById("calculate-btn").addEventListener("click", function() {
   let guests = parseInt(document.getElementById("guest-count").value);
 
@@ -50,20 +431,141 @@ const frostingPrices = {
 };
 
 const signatureFlavors = {
+  "original-vanilla": {
+    cake: "Vanilla",
+    frosting: "Vanilla Buttercream",
+    filling: "Vanilla Custard"
+  },
+  "passionberry": {
+    cake: "Vanilla",
+    frosting: "Raspberry Buttercream",
+    filling: "Passionfruit Curd"
+  },
+  "blueberry-cheesecake": {
+    cake: "Vanilla",
+    frosting: "Cream Cheese",
+    filling: "Blueberry Puree"
+  },
+  "cinnamon-roll": {
+    cake: "Vanilla",
+    frosting: "Cream Cheese",
+    filling: "Cinnamon Brown Butter Ganache"
+  },
+  "london-fog": {
+    cake: "Vanilla",
+    frosting: "Cream Cheese",
+    filling: "Orange Marmalade"
+  },
+  "strawberry-shortcake": {
+    cake: "Vanilla",
+    frosting: "Cream Cheese",
+    filling: "Strawberry Puree"
+  },
   "strawberry-key-lime": {
     cake: "Vanilla",
     frosting: "Strawberry Cream Cheese",
     filling: "Key Lime Curd"
   },
-  "chocolate-raspberry": {
+  "white-chocolate-raspberry": {
+    cake: "Vanilla",
+    frosting: "White Chocolate Ganache",
+    filling: "Raspberry Puree"
+  },
+  "pancake": {
+    cake: "Vanilla",
+    frosting: "White Chocolate Ganache",
+    filling: "Vanilla Custard"
+  },
+
+  "zebra": {
+    cake: "Marble",
+    frosting: "Raspberry Buttercream",
+    filling: "Blackberry Puree"
+  },
+  "red-velvet": {
+    cake: "Marble",
+    frosting: "White Chocolate Ganache",
+    filling: ""
+  },
+
+  "original-chocolate": {
+    cake: "Chocolate",
+    frosting: "Chocolate Mousse",
+    filling: ""
+  },
+  "tuxedo": {
+    cake: "Chocolate",
+    frosting: "Chocolate Mousse",
+    filling: "White Chocolate Ganache"
+  },
+  "raspberry-chocolate-mousse": {
+    cake: "Chocolate",
+    frosting: "Chocolate Mousse",
+    filling: "Raspberry Puree"
+  },
+  "cookies-and-cream": {
+    cake: "Chocolate",
+    frosting: "Oreo Buttercream",
+    filling: ""
+  },
+  "black-forrest": {
     cake: "Chocolate",
     frosting: "Chocolate Buttercream",
-    filling: "Raspberry"
+    filling: "Mixed Berry Jam"
   },
-  "lemon-berry": {
+  "mocha": {
+    cake: "Chocolate",
+    frosting: "Coffee Buttercream",
+    filling: "Dulce De Leche"
+  },
+
+  "lemon-blueberry": {
     cake: "Lemon",
-    frosting: "Vanilla Buttercream",
-    filling: "Strawberry"
+    frosting: "Lemon Buttercream",
+    filling: "Blueberry Puree"
+  },
+
+  "carrot": {
+    cake: "Spice",
+    frosting: "Cream Cheese",
+    filling: ""
+  },
+  "apple-cider": {
+    cake: "Spice",
+    frosting: "Cinnamon Honey Buttercream",
+    filling: "Apple Pie Filling"
+  },
+  "horchata": {
+    cake: "Spice",
+    frosting: "Horchata Buttercream",
+    filling: "Dulce De Leche"
+  },
+  "cranberry-orange": {
+    cake: "Spice",
+    frosting: "Cranberry Buttercream",
+    filling: "Orange Marmalade"
+  },
+
+  "coconut-cream": {
+    cake: "Coconut",
+    frosting: "Coconut Cream Buttercream",
+    filling: "Vanilla Custard"
+  },
+  "key-lime-coconut": {
+    cake: "Coconut",
+    frosting: "White Chocolate Ganache",
+    filling: "Key Lime Curd"
+  },
+
+  "almond-joy": {
+    cake: "Almond",
+    frosting: "Coconut Cream Buttercream",
+    filling: "Chocolate Mousse"
+  },
+  "bee-sting": {
+    cake: "Almond",
+    frosting: "Cinnamon Honey Buttercream",
+    filling: "Vanilla Custard"
   }
 };
 
@@ -370,213 +872,46 @@ topVisuals.forEach((recommendation, index) => {
   label.classList.add("visual-label");
 
   label.innerHTML = `
-  <strong>Option ${index + 1}</strong>
-  <div class="servings">Serves ${recommendation.servings}</div>
-  <div class="cake-name">${recommendation.name}</div>
-`;
+    <strong>Option ${index + 1}</strong>
+    <div class="servings">Serves ${recommendation.servings}</div>
+    <div class="cake-name">${recommendation.name}</div>
+  `;
 
   card.appendChild(label);
 
-  // TIERED CAKES
-  if (recommendation.type === "tiered") {
-    let matchedTier = tieredOptions.find(option => {
-      let optionName = option.tiers
-        .slice()
-        .sort((a, b) => a - b)
-        .map(size => `${size}"`)
-        .join(' + ') + " tiered cake";
+  const preview3D = document.createElement("div");
+preview3D.classList.add("recommendation-cake-3d");
 
-      return optionName === recommendation.name;
-    });
+if (recommendation.type === "tiered-round-backup") {
+  preview3D.classList.add("recommendation-cake-3d-wide");
+}
 
-    if (matchedTier) {
-      let tieredVisual = document.createElement("div");
-      tieredVisual.classList.add("tiered-visual");
+card.appendChild(preview3D);
 
-      let tiers = matchedTier.tiers.slice().sort((a, b) => a - b);
+  initRecommendationCake3D(preview3D, recommendation);
 
-      tiers.forEach((size, index) => {
-        let tierDiv = document.createElement("div");
-tierDiv.classList.add("tier");
-tierDiv.style.setProperty("--i", index);
-tierDiv.style.width = size * 20 + "px";
+  let customizeBtn = document.createElement("button");
+  customizeBtn.textContent = "Customize";
+  customizeBtn.classList.add("customize-btn");
 
-// filling stripe
-let fillingTop = document.createElement("div");
-fillingTop.classList.add("filling-line", "filling-top");
-
-let fillingBottom = document.createElement("div");
-fillingBottom.classList.add("filling-line", "filling-bottom");
-
-let tierLabel = document.createElement("span");
-tierLabel.textContent = `${size}"`;
-
-tierDiv.appendChild(fillingTop);
-tierDiv.appendChild(fillingBottom);
-tierDiv.appendChild(tierLabel);
-
-        tieredVisual.appendChild(tierDiv);
-      });
-
-      card.appendChild(tieredVisual);
-    }
-  }
-
-
-  // SINGLE CAKES
-  else if (recommendation.type === "single") {
-    let singleVisual = document.createElement("div");
-    singleVisual.classList.add("single-visual");
-
-    let sizeMatch = recommendation.name.match(/\d+/);
-    if (sizeMatch) {
-      let size = parseInt(sizeMatch[0]);
-
-      let tierDiv = document.createElement("div");
-tierDiv.classList.add("tier");
-tierDiv.style.width = size * 20 + "px";
-
-// filling stripe
-let fillingTop = document.createElement("div");
-fillingTop.classList.add("filling-line", "filling-top");
-
-let fillingBottom = document.createElement("div");
-fillingBottom.classList.add("filling-line", "filling-bottom");
-
-let tierLabel = document.createElement("span");
-tierLabel.textContent = `${size}"`;
-
-tierDiv.appendChild(fillingTop);
-tierDiv.appendChild(fillingBottom);
-tierDiv.appendChild(tierLabel);
-
-      singleVisual.appendChild(tierDiv);
-    }
-
-    card.appendChild(singleVisual);
-  }
-  // TIERED + ROUND
-  else if (recommendation.type === "tiered-round-backup") {
-    let comboVisual = document.createElement("div");
-    comboVisual.classList.add("combo-visual");
-
-    let tieredPart = document.createElement("div");
-    tieredPart.classList.add("tiered-visual");
-
-    let allSizes = recommendation.name.match(/\d+/g).map(Number);
-    let tierCount = recommendation.name.includes('tiered cake +') ? allSizes.length - 1 : allSizes.length;
-
-  let tierSizes = allSizes.slice(0, tierCount).sort((a, b) => a - b);
-  let backupSize = allSizes[allSizes.length - 1];
-
-  tierSizes.forEach((size, index) => {
-  let tierDiv = document.createElement("div");
-  tierDiv.classList.add("tier");
-  tierDiv.style.setProperty("--i", index);
-  tierDiv.style.width = size * 20 + "px";
-
-// filling stripe
-let fillingTop = document.createElement("div");
-fillingTop.classList.add("filling-line", "filling-top");
-
-let fillingBottom = document.createElement("div");
-fillingBottom.classList.add("filling-line", "filling-bottom");
-
-let tierLabel = document.createElement("span");
-tierLabel.textContent = `${size}"`;
-
-tierDiv.appendChild(fillingTop);
-tierDiv.appendChild(fillingBottom);
-tierDiv.appendChild(tierLabel);
-    tieredPart.appendChild(tierDiv);
+  customizeBtn.addEventListener("click", () => {
+    showCustomizer(recommendation);
   });
 
-let backupDiv = document.createElement("div");
-backupDiv.classList.add("tier");
-backupDiv.style.width = backupSize * 20 + "px";
-
-// filling stripe
-let fillingTop = document.createElement("div");
-fillingTop.classList.add("filling-line", "filling-top");
-
-let fillingBottom = document.createElement("div");
-fillingBottom.classList.add("filling-line", "filling-bottom");
-
-let backupLabel = document.createElement("span");
-backupLabel.textContent = `${backupSize}"`;
-
-backupDiv.appendChild(fillingTop);
-backupDiv.appendChild(fillingBottom);
-backupDiv.appendChild(backupLabel);
-
-  comboVisual.appendChild(tieredPart);
-  comboVisual.appendChild(backupDiv);
-
-  card.appendChild(comboVisual);
-}
-  // ROUND + SHEET COMBOS
-  else if (recommendation.type === "sheet-combo") {
-    let comboVisual = document.createElement("div");
-    comboVisual.classList.add("combo-visual");
-
-    let roundMatch = recommendation.name.match(/\d+/);
-    if (roundMatch) {
-      let roundSize = parseInt(roundMatch[0]);
-
-      let roundDiv = document.createElement("div");
-      roundDiv.classList.add("tier");
-      roundDiv.style.width = roundSize * 20 + "px";
-      roundDiv.textContent = `${roundSize}"`;
-
-      comboVisual.appendChild(roundDiv);
-    }
-
-    let sheetDiv = document.createElement("div");
-    sheetDiv.classList.add("sheet");
-    sheetDiv.textContent = "sheet";
-
-    if (recommendation.name.includes("1/4")) {
-      sheetDiv.style.width = "120px";
-    } else if (recommendation.name.includes("1/2")) {
-      sheetDiv.style.width = "160px";
-    } else {
-      sheetDiv.style.width = "220px";
-    }
-
-    comboVisual.appendChild(sheetDiv);
-    card.appendChild(comboVisual);
-  }
-
+  card.appendChild(customizeBtn);
   visualsContainer.appendChild(card);
-
-//Customize Button
-  let customizeBtn = document.createElement("button");
-customizeBtn.textContent = "Customize";
-customizeBtn.classList.add("customize-btn");
-
-customizeBtn.addEventListener("click", () => {
-  let visualHTML = "";
-
-  if (card.querySelector(".combo-visual")) {
-  visualHTML = card.querySelector(".combo-visual").outerHTML;
-} else if (card.querySelector(".tiered-visual")) {
-  visualHTML = card.querySelector(".tiered-visual").outerHTML;
-} else if (card.querySelector(".single-visual")) {
-  visualHTML = card.querySelector(".single-visual").outerHTML;
-}
-
-  showCustomizer(recommendation, visualHTML);
 });
 
-card.appendChild(customizeBtn);
-});
-
-function showCustomizer(recommendation, visualHTML) {
+function showCustomizer(recommendation) {
   document.getElementById("calculator-ui").style.display = "none";
   document.getElementById("cake-visuals").style.display = "none";
   document.getElementById("customizer").style.display = "block";
 
   const customizer = document.getElementById("customizer");
+  const visualHTML = getCustomizerVisualHTML(recommendation);
+
+console.log("recommendation:", recommendation);
+console.log("visualHTML:", visualHTML);
 
   customizer.innerHTML = `
   <div id="customizer-layout">
@@ -595,7 +930,7 @@ function showCustomizer(recommendation, visualHTML) {
 </div>
 
     <div id="customizer-center">
-      <div id="customizer-visual">${visualHTML}</div>
+      <div id="cake-builder-3d"></div>
     </div>
 
     <div id="customizer-right">
@@ -603,47 +938,109 @@ function showCustomizer(recommendation, visualHTML) {
     <h3>Customize Tier</h3>
 
     <label for="signature-flavor">Signature Flavor</label>
-    <select id="signature-flavor">
-      <option value="">Select signature flavor</option>
-      <option value="strawberry-key-lime">Strawberry Key Lime</option>
-      <option value="chocolate-raspberry">Chocolate Raspberry</option>
-      <option value="lemon-berry">Lemon Berry</option>
-    </select>
+<select id="signature-flavor">
+  <option value="">Select signature flavor</option>
+
+  <optgroup label="Vanilla-Base">
+  <option value="original-vanilla">Original Vanilla</option>
+  <option value="blueberry-cheesecake">Blueberry Cheesecake</option>
+  <option value="cinnamon-roll">Cinnamon Roll</option>
+  <option value="london-fog">London Fog</option>
+  <option value="pancake">Pancake</option>
+  <option value="passionberry">PassionBerry</option>
+  <option value="strawberry-key-lime">Strawberry Key Lime</option>
+  <option value="strawberry-shortcake">Strawberry Shortcake</option>
+  <option value="white-chocolate-raspberry">White Chocolate Raspberry</option>
+</optgroup>
+
+  <optgroup label="Chocolate-Base">
+  <option value="original-chocolate">Original Chocolate</option>
+  <option value="black-forrest">Black Forrest</option>
+  <option value="cookies-and-cream">Cookies and Cream</option>
+  <option value="mocha">Mocha</option>
+  <option value="raspberry-chocolate-mousse">Raspberry Chocolate Mousse</option>
+  <option value="red-velvet">Red Velvet</option>
+  <option value="tuxedo">Tuxedo</option>
+  <option value="zebra">Zebra</option>
+</optgroup>
+
+  <optgroup label="Fruit">
+  <option value="almond-joy">Almond Joy</option>
+  <option value="coconut-cream">Coconut Cream</option>
+  <option value="cranberry-orange">Cranberry Orange</option>
+  <option value="key-lime-coconut">Key Lime Coconut</option>
+  <option value="lemon-blueberry">Lemon Blueberry</option>
+</optgroup>
+
+  <optgroup label="Spice">
+  <option value="apple-cider">Apple Cider</option>
+  <option value="bee-sting">Bee Sting</option>
+  <option value="carrot">Carrot</option>
+  <option value="horchata">Horchata</option>
+</optgroup>
+</select>
 
     <p class="or-divider">OR</p>
 
     <label for="tier-flavor">Choose Cake</label>
     <select id="tier-flavor">
       <option value="">Select cake</option>
-      <option>Vanilla</option>
+      <option>Almond</option>
       <option>Chocolate</option>
-      <option>Red Velvet</option>
+      <option>Coconut</option>
       <option>Lemon</option>
+      <option>Marble</option>
+      <option>Spice</option>
+      <option>Vanilla</option>
     </select>
 
     <label for="tier-frosting">Choose Frosting</label>
     <select id="tier-frosting">
-      <option value="">Select frosting</option>
-      <option>Vanilla Buttercream</option>
-      <option>Strawberry Cream Cheese</option>
-      <option>Chocolate Buttercream</option>
-      <option>Cream Cheese</option>
-    </select>
+  <option value="">Select frosting</option>
+  <option>Chocolate Buttercream</option>
+  <option>Chocolate Mousse</option>
+  <option>Cinnamon Honey Buttercream</option>
+  <option>Coconut Cream Buttercream</option>
+  <option>Coffee Buttercream</option>
+  <option>Cranberry Buttercream</option>
+  <option>Cream Cheese</option>
+  <option>Horchata Buttercream</option>
+  <option>Lemon Buttercream</option>
+  <option>Oreo Buttercream</option>
+  <option>Raspberry Buttercream</option>
+  <option>Strawberry Cream Cheese</option>
+  <option>Vanilla Buttercream</option>
+  <option>White Chocolate Ganache</option>
+</select>
 
     <label for="filling">Choose Filling</label>
     <select id="filling">
-      <option value="">Select filling</option>
-      <option>Chocolate Ganache</option>
-      <option>Raspberry</option>
-      <option>Strawberry</option>
-      <option>Lemon Curd</option>
-      <option>Key Lime Curd</option>
-    </select>
+  <option value="">Select filling</option>
+  <option>Apple Pie Filling</option>
+  <option>Blackberry Puree</option>
+  <option>Blueberry Puree</option>
+  <option>Chocolate Mousse</option>
+  <option>Cinnamon Brown Butter Ganache</option>
+  <option>Dulce De Leche</option>
+  <option>Key Lime Curd</option>
+  <option>Lemon Curd</option>
+  <option>Mixed Berry Jam</option>
+  <option>Orange Marmalade</option>
+  <option>Passionfruit Curd</option>
+  <option>Raspberry Puree</option>
+  <option>Strawberry Puree</option>
+  <option>Vanilla Custard</option>
+  <option>White Chocolate Ganache</option>
+</select>
   </div>
 </div>
 
   </div>
 `;
+
+setTimeout(() => {
+  initCakeBuilder3D(recommendation);
+}, 0);
 
 document.getElementById("back-btn").addEventListener("click", goBack);
 
@@ -692,82 +1089,55 @@ signatureSelect.addEventListener("change", function () {
 });
 
 const isCombo = recommendation.type === "tiered-round-backup";
-
-const tierLabels = isCombo
-  ? document.querySelectorAll("#customizer-visual .tiered-visual .tier span")
-  : document.querySelectorAll("#customizer-visual .tier span");
+const parts = getRecommendationParts(recommendation);
 
 const orderSections = document.getElementById("order-sections");
 
-// create ONE section
+// main tiers section
 const section = document.createElement("div");
 
 section.classList.add("order-section");
-
-section.innerHTML = `
-  <div class="flavor-list"></div>
-`;
-
+section.innerHTML = `<div class="flavor-list"></div>`;
 orderSections.appendChild(section);
-
-let backupSection = null;
-
-if (isCombo) {
-  backupSection = document.createElement("div");
-  backupSection.classList.add("order-section");
-
-  backupSection.innerHTML = `
-    <div class="backup-list"></div>
-  `;
-
-  orderSections.appendChild(backupSection);
-}
-
-if (isCombo && backupSection) {
-  const backupList = backupSection.querySelector(".backup-list");
-  const sizes = recommendation.name.match(/\d+/g).map(Number);
-  const backupSize = sizes[sizes.length - 1];
-
- const backupRow = document.createElement("div");
-backupRow.classList.add("tier-summary");
-backupRow.dataset.index = tierLabels.length;
-
-backupRow.innerHTML = `
-  <p><strong><span class="tier-title">${backupSize}" Backup</span></strong></p>
-  <div class="tier-details">
-    <p>Cake: <span class="backup-flavor-value">-</span></p>
-    <p>Frosting: <span class="backup-frosting-value">-</span></p>
-    <p>Filling: <span class="backup-filling-value">-</span></p>
-  </div>
-`;
-
-backupRow.addEventListener("click", () => tierDivs[tierLabels.length].click());
-
-backupList.appendChild(backupRow);
-}
 
 const flavorListContainer = section.querySelector(".flavor-list");
 
-tierLabels.forEach((label, index) => {
+// optional backup section
+let backupSection = null;
+let backupList = null;
+
+if (parts.some(part => part.kind === "backup")) {
+  backupSection = document.createElement("div");
+  backupSection.classList.add("order-section");
+  backupSection.innerHTML = `<div class="backup-list"></div>`;
+  orderSections.appendChild(backupSection);
+  backupList = backupSection.querySelector(".backup-list");
+}
+
+parts.forEach((part, index) => {
   const tierRow = document.createElement("div");
   tierRow.classList.add("tier-summary");
   tierRow.dataset.index = index;
+  tierRow.dataset.kind = part.kind;
+  if (part.size) tierRow.dataset.size = part.size;
 
   tierRow.innerHTML = `
-  <p><strong><span class="tier-title">${label.textContent} Round</span></strong></p>
-  <div class="tier-details">
-    <p>Cake: <span class="tier-flavor-value">-</span></p>
-    <p>Frosting: <span class="tier-frosting-value">-</span></p>
-    <p>Filling: <span class="tier-filling-value">-</span></p>
-  </div>
-`;
+    <p><strong><span class="tier-title">${part.label}</span></strong></p>
+    <div class="tier-details">
+      <p>Cake: <span class="${part.kind === "backup" ? "backup-flavor-value" : "tier-flavor-value"}">-</span></p>
+      <p>Frosting: <span class="${part.kind === "backup" ? "backup-frosting-value" : "tier-frosting-value"}">-</span></p>
+      <p>Filling: <span class="${part.kind === "backup" ? "backup-filling-value" : "tier-filling-value"}">-</span></p>
+    </div>
+  `;
 
-  tierRow.addEventListener("click", () => tierDivs[index].click());
-
-  flavorListContainer.appendChild(tierRow);
+  if (part.kind === "backup" && backupList) {
+    backupList.appendChild(tierRow);
+  } else {
+    flavorListContainer.appendChild(tierRow);
+  }
 });
 
-const tierDivs = document.querySelectorAll("#customizer-visual .tier, #customizer-visual .combo-visual > .tier");
+
 
 const flavorLines = document.querySelectorAll(".tier-flavor-value");
 const backupFlavorLine = document.querySelector(".backup-flavor-value");
@@ -785,18 +1155,15 @@ let activeTierIndex = null;
 
 const priceTotal = document.getElementById("price-total");
 
-const selections = Array.from(tierRows).map(row => {
-  const titleEl = row.querySelector(".tier-title");
-  const label = titleEl ? titleEl.textContent.trim() : row.querySelector("strong").textContent.trim();
-
-  return {
-    label,
-    flavor: "",
-    frosting: "",
-    filling: "",
-    signature: ""
-  };
-});
+const selections = parts.map(part => ({
+  label: part.label,
+  size: part.size,
+  kind: part.kind,
+  flavor: "",
+  frosting: "",
+  filling: "",
+  signature: ""
+}));
 
 function updatePrice() {
   const base = getBasePrice(recommendation);
@@ -822,20 +1189,12 @@ function updateTierTitle(index) {
   }
 }
 
-tierDivs.forEach((tier, index) => {
-  tier.addEventListener("click", () => {
+tierRows.forEach((row, index) => {
+  row.addEventListener("click", () => {
     activeTierIndex = index;
 
-    tierDivs.forEach(t => t.classList.remove("active-tier"));
-    tier.classList.add("active-tier");
-
-    tierRows.forEach(row => row.classList.remove("active-tier-row"));
-
-    const activeRow = document.querySelector(`.tier-summary[data-index="${index}"]`);
-    if (activeRow) activeRow.classList.add("active-tier-row");
-
-    const isBackupCake =
-      isCombo && tier.parentElement.classList.contains("combo-visual");
+    tierRows.forEach(r => r.classList.remove("active-tier-row"));
+    row.classList.add("active-tier-row");
 
     tierFlavorSelect.value = selections[index].flavor || "";
     frostingSelect.value = selections[index].frosting || "";
@@ -844,8 +1203,8 @@ tierDivs.forEach((tier, index) => {
   });
 });
 
-if (tierDivs.length > 0) {
-  tierDivs[0].click();
+if (tierRows.length > 0) {
+  tierRows[0].click();
 }
 
 tierFlavorSelect.addEventListener("change", function () {
@@ -862,8 +1221,7 @@ tierFlavorSelect.addEventListener("change", function () {
   if (this.value === "Red Velvet") color = "#ad0b16";
   if (this.value === "Lemon") color = "#FCEB8C";
 
-  tierDivs[selectedIndex].style.setProperty("--cake-color", color);
-  tierDivs[selectedIndex].style.setProperty("--cake-border", "rgba(0,0,0,0.15)");
+
 
 const price = flavorPrices[this.value] || 0;
 
@@ -940,10 +1298,7 @@ updatePrice();
   if (this.value === "Cream Cheese") fillingColor = "#f4f1e8";
   if (this.value === "Vanilla Buttercream") fillingColor = "#fff6d9";
 
-  const fillingParts = tierDivs[activeTierIndex].querySelectorAll(".filling-line");
-  fillingParts.forEach(part => {
-    part.style.background = fillingColor;
-  });
+ 
 });
 
 }

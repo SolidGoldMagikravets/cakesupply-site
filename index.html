@@ -4,14 +4,33 @@
   <title>Cake Supply</title>
   <link rel="icon" href="pixilart-drawing.png">
   <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
 </head>
 
   <body>
 
     <h1>Cake Supply</h1>
 
-<div class="cake-container">
-  <img src="cake-images/cake3.jpeg" class="cake">
+<div class="cake-3d-wrap">
+  <model-viewer
+    id="cake-model"
+    src="models/cake-config.glb"
+    alt="3D cake model"
+    camera-controls
+    auto-rotate
+    shadow-intensity="1"
+    exposure="1.1"
+    environment-image="neutral"
+    class="cake-3d">
+  </model-viewer>
 </div>
 
 <div id="calculator-ui">
@@ -33,6 +52,6 @@
 <h2>Contact</h2>
 <p>Email me for custom cake inquiries.</p>
 
-<script src="script.js"></script>
+<script type="module" src="script.js"></script>
 </body>
 </html>

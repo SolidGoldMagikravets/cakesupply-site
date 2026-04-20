@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Three.js Cake Test</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #f8f8f8;
+    }
+
+    canvas {
+      display: block;
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf8f8f8);
+
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      100
+    );
+
+    camera.position.set(0, 0.55, 2.2);
+    camera.lookAt(0, 0.45, 0);
+
+    let activeTier = null;
+    let previousTier = null;
+    let highlightRing = null;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+function showHighlightRing(tier) {
+  // remove old ring
+  if (highlightRing) {
+    scene.remove(highlightRing);
+    highlightRing.geometry.dispose();
+    highlightRing.material.dispose();
+    highlightRing = null;
+  }
+
+  // remove old vertical / extra highlight pieces
+  scene.children.forEach((obj) => {
+    if (obj.userData.isHighlightVertical || obj.userData.isHighlightExtra) {
+      scene.remove(obj);
+
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) obj.material.dispose();
+    }
+  });
+
+  const box = new THREE.Box3().setFromObject(tier);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+
+  box.getSize(size);
+  box.getCenter(center);
+
+  const radius = (size.x / 2) * 1.01;
+  const topY = box.max.y + 0.002;
+  const bottomY = box.min.y + 0.002;
+
+  const segments = 128;
+
+  function makeRing(y) {
+    const points = [];
+
+    for (let i = 0; i <= segments; i++) {
+      const angle = (i / segments) * Math.PI * 2;
+      points.push(
+        new THREE.Vector3(
+          center.x + Math.cos(angle) * radius,
+          y,
+          center.z + Math.sin(angle) * radius
+        )
+      );
+    }
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+    const material = new THREE.LineDashedMaterial({
+  color: 0x6494ed,
+  dashSize: 0.04,
+  gapSize: 0.012
+});
+
+    const ring = new THREE.LineLoop(geometry, material);
+    ring.raycast = () => null;
+    ring.computeLineDistances();
+    ring.userData.isHighlightExtra = true;
+
+    scene.add(ring);
+    return ring;
+  }
+
+// top ring
+highlightRing = makeRing(topY);
+
+// bottom ring
+makeRing(bottomY);
+
+}
+
+window.addEventListener("click", (event) => {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+
+  const intersects = raycaster.intersectObjects(scene.children, true);
+
+  if (intersects.length > 0) {
+    let clicked = intersects[0].object;
+
+    while (clicked.parent && !clicked.userData.isCake) {
+      clicked = clicked.parent;
+    }
+
+    if (clicked.userData.isCake) {
+      activeTier = clicked;
+      previousTier = clicked;
+      showHighlightRing(activeTier);
+      console.log("Selected tier:", clicked.userData.size);
+    }
+  }
+});
+
+    const ambient = new THREE.AmbientLight(0xffffff, 1.2);
+scene.add(ambient);
+
+const light = new THREE.DirectionalLight(0xffffff, 1.5);
+light.position.set(3, 5, 3);
+scene.add(light);
+
+const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
+fillLight.position.set(-3, 3, 3);
+scene.add(fillLight);
+
+    const loader = new GLTFLoader();
+
+function styleModel(model) {
+  model.traverse((child) => {
+    if (child.isMesh) {
+      const mat = child.material;
+      mat.roughness = 0.6;
+      mat.metalness = 0.0;
+      mat.color.multiplyScalar(1.2);
+    }
+  });
+}
+
+function getHeight(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  return box.max.y - box.min.y;
+}
+
+const tierCache = {};
+
+function loadTier(size) {
+  return new Promise((resolve) => {
+    if (tierCache[size]) {
+      resolve(tierCache[size].clone());
+      return;
+    }
+
+    loader.load(`models/tier_${size}.glb`, (gltf) => {
+  const model = gltf.scene;
+
+  model.traverse((child) => {
+    if (child.isMesh) {
+      console.log('mesh:', child.name, 'material:', child.material.name);
+    }
+  });
+
+  styleModel(model);
+
+  tierCache[size] = model;
+  resolve(model.clone());
+});
+  });
+}
+
+function clearCake() {
+  const toRemove = [];
+
+  scene.children.forEach((obj) => {
+    if (obj.userData.isCake) {
+      toRemove.push(obj);
+    }
+  });
+
+  toRemove.forEach((obj) => scene.remove(obj));
+}
+
+async function buildCake(sizes) {
+  clearCake();
+
+  let currentHeight = 0;
+
+  for (let size of sizes) {
+    const tier = await loadTier(size);
+
+    const height = getHeight(tier);
+
+    tier.position.set(0, currentHeight, 0);
+
+    tier.userData.isCake = true;
+    tier.userData.size = size;
+
+    scene.add(tier);
+
+    currentHeight += height;
+  }
+}
+
+function updateCakeColors({ frosting, filling, cake }) {
+  scene.traverse((obj) => {
+    if (!obj.userData.isCake) return;
+
+    obj.traverse((child) => {
+      if (!child.isMesh) return;
+
+      const mat = child.material;
+
+      if (mat.name === "frosting_mat" && frosting) {
+        mat.color.set(frosting);
+      }
+
+      if (mat.name === "filling_mat" && filling) {
+        mat.color.set(filling);
+      }
+
+      if (mat.name === "cake.mat" && cake) {
+        mat.color.set(cake);
+      }
+    });
+  });
+}
+
+function updateActiveTierColors({ frosting, filling, cake }) {
+  if (!activeTier) return;
+
+  activeTier.traverse((child) => {
+    if (!child.isMesh) return;
+
+    const mat = child.material;
+    const name = mat.name.toLowerCase();
+
+    if (name.includes("frosting") && frosting) {
+      mat.color.set(frosting);
+    }
+
+    if (name.includes("filling") && filling) {
+      mat.color.set(filling);
+    }
+
+    if (name.includes("cake") && cake) {
+      mat.color.set(cake);
+    }
+  });
+}
+
+window.buildCake = buildCake;
+window.updateCakeColors = updateCakeColors;
+window.updateActiveTierColors = updateActiveTierColors;
+
+buildCake([12, 10, 8]);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
