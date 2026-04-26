@@ -2,8 +2,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const cakeModel = document.getElementById("cake-model");
+const landingCakeHero = document.getElementById("landing-cake-hero");
 const guestCountInput = document.getElementById("guest-count");
 const calculateButton = document.getElementById("calculate-btn");
+const landingPage = document.getElementById("landing-page");
+const recommendationsPage = document.getElementById("recommendations-page");
+const recommendationsBackButton = document.getElementById("recommendations-back-btn");
 const queryParams = new URLSearchParams(window.location.search);
 const isDevMode = queryParams.get("dev") === "1";
 const APP_STATE_KEY = "cake-supply-app-state";
@@ -32,6 +36,35 @@ function clearSavedAppState() {
   } catch (error) {
     console.warn("Unable to clear saved app state", error);
   }
+}
+
+function showLandingPageView() {
+  if (landingPage) landingPage.style.display = "block";
+  if (recommendationsPage) recommendationsPage.style.display = "none";
+  const customizerEl = document.getElementById("customizer");
+  if (customizerEl) customizerEl.style.display = "none";
+}
+
+function showRecommendationsPageView() {
+  if (landingPage) landingPage.style.display = "none";
+  if (recommendationsPage) recommendationsPage.style.display = "block";
+  const customizerEl = document.getElementById("customizer");
+  if (customizerEl) customizerEl.style.display = "none";
+}
+
+function showCustomizerPageView() {
+  if (landingPage) landingPage.style.display = "none";
+  if (recommendationsPage) recommendationsPage.style.display = "none";
+  const customizerEl = document.getElementById("customizer");
+  if (customizerEl) customizerEl.style.display = "block";
+}
+
+function returnToLandingPage() {
+  showLandingPageView();
+  requestAnimationFrame(() => {
+    initLandingHero();
+  });
+  setSavedAppState(getRecommendationStatePayload(null, null, "landing"));
 }
 
 let cake3DMaterials = {
@@ -93,7 +126,7 @@ const fillingColorMap = {
   "Blackberry Puree": "#5A355C",
   "Blueberry Puree": "#6A74B8",
   "Chocolate Mousse": "#6F4939",
-  "Cinnamon Brown Butter Ganache": "#9E6A46",
+  "Cinnamon Sugar Ganache": "#9E6A46",
   "Dulce De Leche": "#B9784B",
   "Key Lime Curd": "#DCEB90",
   "Lemon Curd": "#F6D857",
@@ -111,6 +144,339 @@ const defaultTierColors = {
   frosting: "#F4E7B6",
   filling: "#8A2E34"
 };
+
+const SHEET_MODEL_SCALE = 0.004;
+const RECOMMENDATION_SHEET_MODEL_SCALE = 0.024;
+const CUSTOMIZER_SHEET_DISPLAY_SCALE = 1.6;
+
+const landingHeroScenes = [
+  [
+    { cake: "Vanilla", frosting: "Vanilla Buttercream", filling: "Strawberry Puree" },
+    { cake: "Chocolate", frosting: "Chocolate Mousse", filling: "Raspberry Puree" },
+    { cake: "Vanilla", frosting: "Cream Cheese", filling: "Blueberry Puree" },
+    { cake: "Marble", frosting: "White Chocolate Ganache", filling: "Orange Marmalade" },
+    { cake: "Vanilla", frosting: "Strawberry Cream Cheese", filling: "Passionfruit Curd" }
+  ],
+  [
+    { cake: "Chocolate", frosting: "Chocolate Buttercream", filling: "Chocolate Mousse" },
+    { cake: "Vanilla", frosting: "White Chocolate Ganache", filling: "Raspberry Puree" },
+    { cake: "Lemon", frosting: "Cream Cheese", filling: "Lemon Curd" },
+    { cake: "Spice", frosting: "Cinnamon Honey Buttercream", filling: "Cinnamon Sugar Ganache" },
+    { cake: "Vanilla", frosting: "Raspberry Buttercream", filling: "Mixed Berry Jam" }
+  ],
+  [
+    { cake: "Coconut", frosting: "Coconut Cream Buttercream", filling: "Vanilla Custard" },
+    { cake: "Vanilla", frosting: "Strawberry Cream Cheese", filling: "Strawberry Puree" },
+    { cake: "Chocolate", frosting: "Coffee Buttercream", filling: "Dulce De Leche" },
+    { cake: "Lemon", frosting: "Vanilla Buttercream", filling: "Key Lime Curd" },
+    { cake: "Marble", frosting: "White Chocolate Ganache", filling: "Blackberry Puree" }
+  ],
+  [
+    { cake: "Vanilla", frosting: "Cream Cheese", filling: "Orange Marmalade" },
+    { cake: "Chocolate", frosting: "Oreo Buttercream", filling: "Chocolate Mousse" },
+    { cake: "Spice", frosting: "Cinnamon Honey Buttercream", filling: "Apple Pie Filling" },
+    { cake: "Vanilla", frosting: "Vanilla Buttercream", filling: "Blueberry Puree" },
+    { cake: "Chocolate", frosting: "Raspberry Buttercream", filling: "Raspberry Puree" }
+  ]
+];
+
+let landingHeroInterval = null;
+let landingHeroAnimationFrame = null;
+let landingHeroRenderer = null;
+let landingHeroScene = null;
+let landingHeroCamera = null;
+let landingHeroGroup = null;
+let landingHeroTierEntries = [];
+let landingHeroResizeHandler = null;
+let landingHeroStepTimeouts = [];
+
+function getFlavorColor(map, key, fallback) {
+  return map[key] || fallback;
+}
+
+function colorToThree(hex) {
+  return new THREE.Color(hex || "#ffffff");
+}
+
+function setLandingHeroTierTargets(sceneIndex) {
+  if (!landingHeroTierEntries.length) return;
+
+  const sceneConfig = landingHeroScenes[sceneIndex % landingHeroScenes.length];
+
+  landingHeroTierEntries.forEach((entry, index) => {
+    const combo = sceneConfig[index];
+    if (!combo) return;
+
+    entry.targetColors = {
+      cake: colorToThree(getFlavorColor(cakeColorMap, combo.cake, defaultTierColors.cake)),
+      frosting: colorToThree(getFlavorColor(frostingColorMap, combo.frosting, defaultTierColors.frosting)),
+      filling: combo.filling
+        ? colorToThree(getFlavorColor(fillingColorMap, combo.filling, defaultTierColors.filling))
+        : null
+    };
+  });
+}
+
+function applyLandingHeroSceneImmediately(sceneIndex) {
+  if (!landingHeroTierEntries.length) return;
+
+  const sceneConfig = landingHeroScenes[sceneIndex % landingHeroScenes.length];
+
+  landingHeroTierEntries.forEach((entry, index) => {
+    const combo = sceneConfig[index];
+    if (!combo) return;
+
+    const colors = {
+      cake: colorToThree(getFlavorColor(cakeColorMap, combo.cake, defaultTierColors.cake)),
+      frosting: colorToThree(getFlavorColor(frostingColorMap, combo.frosting, defaultTierColors.frosting)),
+      filling: combo.filling
+        ? colorToThree(getFlavorColor(fillingColorMap, combo.filling, defaultTierColors.filling))
+        : null
+    };
+
+    entry.targetColors = colors;
+    entry.currentColors = {
+      cake: colors.cake.clone(),
+      frosting: colors.frosting.clone(),
+      filling: colors.filling ? colors.filling.clone() : null
+    };
+    entry.currentX = entry.homeX;
+    entry.targetX = entry.homeX;
+    entry.object.position.x = entry.homeX;
+
+    entry.object.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((material) => {
+        const role = material.userData?.role;
+        const color = entry.currentColors[role];
+
+        if (role === "filling") {
+          material.transparent = !color;
+          material.opacity = color ? 1 : 0;
+        }
+
+        if (color && material.color) {
+          material.color.copy(color);
+        }
+      });
+    });
+  });
+}
+
+function clearLandingHeroStepTimeouts() {
+  landingHeroStepTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+  landingHeroStepTimeouts = [];
+}
+
+function queueLandingHeroSceneTransition(sceneIndex) {
+  if (!landingHeroTierEntries.length) return;
+
+  const sceneConfig = landingHeroScenes[sceneIndex % landingHeroScenes.length];
+
+  clearLandingHeroStepTimeouts();
+
+  landingHeroTierEntries.forEach((entry, index) => {
+    const combo = sceneConfig[index];
+    if (!combo) return;
+
+    const timeoutId = window.setTimeout(() => {
+      entry.targetColors = {
+        cake: colorToThree(getFlavorColor(cakeColorMap, combo.cake, defaultTierColors.cake)),
+        frosting: colorToThree(getFlavorColor(frostingColorMap, combo.frosting, defaultTierColors.frosting)),
+        filling: combo.filling
+          ? colorToThree(getFlavorColor(fillingColorMap, combo.filling, defaultTierColors.filling))
+          : null
+      };
+
+      const direction = index % 2 === 0 ? -1 : 1;
+      entry.currentX = entry.homeX + (0.08 * direction);
+      entry.targetX = entry.homeX;
+      entry.object.position.x = entry.currentX;
+    }, index * 7000);
+
+    landingHeroStepTimeouts.push(timeoutId);
+  });
+}
+
+function updateLandingHeroTierColors() {
+  landingHeroTierEntries.forEach((entry) => {
+    const { object, currentColors, targetColors } = entry;
+    if (!object || !targetColors) return;
+
+    if (typeof entry.currentX === "number" && typeof entry.targetX === "number") {
+      entry.currentX += (entry.targetX - entry.currentX) * 0.16;
+      object.position.x = entry.currentX;
+    }
+
+    Object.keys(currentColors).forEach((role) => {
+      const current = currentColors[role];
+      const target = targetColors[role];
+
+      if (!current || !target) return;
+      current.lerp(target, 0.08);
+    });
+
+    applyTierColorsToObject(object, {
+      flavor: "__landing__",
+      frosting: "__landing__",
+      filling: targetColors.filling ? "__landing__" : ""
+    });
+
+    object.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((material) => {
+        const role = material.userData?.role;
+        const current = currentColors[role];
+
+        if (role === "filling") {
+          material.transparent = !current;
+          material.opacity = current ? 1 : 0;
+        }
+
+        if (current && material.color) {
+          material.color.copy(current);
+        }
+      });
+    });
+  });
+}
+
+async function initLandingHero() {
+  if (!landingCakeHero) return;
+
+  if (landingHeroInterval) {
+    clearInterval(landingHeroInterval);
+    landingHeroInterval = null;
+  }
+
+  clearLandingHeroStepTimeouts();
+
+  if (landingHeroAnimationFrame) {
+    cancelAnimationFrame(landingHeroAnimationFrame);
+    landingHeroAnimationFrame = null;
+  }
+
+  if (landingHeroResizeHandler) {
+    window.removeEventListener("resize", landingHeroResizeHandler);
+    landingHeroResizeHandler = null;
+  }
+
+  landingCakeHero.innerHTML = "";
+  landingHeroTierEntries = [];
+
+  landingHeroScene = new THREE.Scene();
+  landingHeroScene.background = null;
+
+  const width = landingCakeHero.clientWidth || 620;
+  const height = landingCakeHero.clientHeight || 520;
+
+  landingHeroCamera = new THREE.PerspectiveCamera(32, width / height, 0.1, 100);
+  landingHeroCamera.position.set(0, 0.92, 2.62);
+  landingHeroCamera.lookAt(0, 0.72, 0);
+
+  landingHeroRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  landingHeroRenderer.setPixelRatio(window.devicePixelRatio);
+  landingHeroRenderer.setSize(width, height);
+  landingCakeHero.appendChild(landingHeroRenderer.domElement);
+
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+  keyLight.position.set(3.5, 5.5, 4);
+  landingHeroScene.add(keyLight);
+
+  const fillLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  fillLight.position.set(-3.5, 3.5, 3);
+  landingHeroScene.add(fillLight);
+
+  const rimLight = new THREE.DirectionalLight(0xffffff, 0.85);
+  rimLight.position.set(0, 2.5, -4);
+  landingHeroScene.add(rimLight);
+
+  landingHeroScene.add(new THREE.AmbientLight(0xffffff, 1.45));
+
+  landingHeroGroup = new THREE.Group();
+  landingHeroScene.add(landingHeroGroup);
+
+  const localLoader = new GLTFLoader();
+  const tierSizes = [14, 12, 10, 8, 6];
+  let currentHeight = 0;
+
+  for (const size of tierSizes) {
+    const gltf = await new Promise((resolve, reject) => {
+      localLoader.load(`models/tier_${size}.glb`, resolve, undefined, reject);
+    });
+
+    const tier = gltf.scene;
+    prepareTierMaterials(tier);
+
+    const box = new THREE.Box3().setFromObject(tier);
+    const tierHeight = box.max.y - box.min.y;
+
+    tier.position.set(0, currentHeight, 0);
+    landingHeroGroup.add(tier);
+
+    landingHeroTierEntries.unshift({
+      size,
+      object: tier,
+      homeX: 0,
+      currentX: 0,
+      targetX: 0,
+      currentColors: {
+        cake: colorToThree(defaultTierColors.cake),
+        frosting: colorToThree(defaultTierColors.frosting),
+        filling: colorToThree(defaultTierColors.filling)
+      },
+      targetColors: {
+        cake: colorToThree(defaultTierColors.cake),
+        frosting: colorToThree(defaultTierColors.frosting),
+        filling: colorToThree(defaultTierColors.filling)
+      }
+    });
+
+    currentHeight += tierHeight;
+  }
+
+  const heroBox = new THREE.Box3().setFromObject(landingHeroGroup);
+  const heroCenter = new THREE.Vector3();
+  heroBox.getCenter(heroCenter);
+
+  landingHeroGroup.position.x -= heroCenter.x;
+  landingHeroGroup.position.z -= heroCenter.z;
+  landingHeroGroup.position.y -= heroBox.min.y;
+  landingHeroGroup.position.y += 0.12;
+  landingHeroGroup.scale.setScalar(1.82);
+
+  let sceneIndex = 0;
+  applyLandingHeroSceneImmediately(sceneIndex);
+
+  landingHeroInterval = window.setInterval(() => {
+    sceneIndex = (sceneIndex + 1) % landingHeroScenes.length;
+    queueLandingHeroSceneTransition(sceneIndex);
+  }, landingHeroTierEntries.length * 7000);
+
+  const animateLandingHero = () => {
+    landingHeroAnimationFrame = requestAnimationFrame(animateLandingHero);
+
+    updateLandingHeroTierColors();
+    landingHeroRenderer.render(landingHeroScene, landingHeroCamera);
+  };
+
+  animateLandingHero();
+
+  landingHeroResizeHandler = () => {
+    if (!landingCakeHero || !landingHeroRenderer || !landingHeroCamera) return;
+    const nextWidth = landingCakeHero.clientWidth || 560;
+    const nextHeight = landingCakeHero.clientHeight || 430;
+    landingHeroCamera.aspect = nextWidth / nextHeight;
+    landingHeroCamera.updateProjectionMatrix();
+    landingHeroRenderer.setSize(nextWidth, nextHeight);
+  };
+
+  window.addEventListener("resize", landingHeroResizeHandler);
+}
 
 function getCustomizerVisualHTML(recommendation) {
   const modelSrc = modelMap[recommendation.name];
@@ -179,6 +545,16 @@ function getCustomizerVisualHTML(recommendation) {
 function getRecommendationParts(recommendation) {
   const sizes = (recommendation.name.match(/\d+/g) || []).map(Number);
 
+  if (recommendation.type === "single-sheet") {
+    return [
+      {
+        kind: "main",
+        sheetModelSrc: getSheetCakeModelSrc(recommendation.name),
+        label: getSheetCakeLabel(recommendation.name)
+      }
+    ];
+  }
+
   if (recommendation.type === "single") {
     return [
       {
@@ -226,8 +602,8 @@ function getRecommendationParts(recommendation) {
       },
       {
         kind: "backup",
-        size: roundSize,
-        label: `Sheet Backup (*)`
+        sheetModelSrc: getSheetCakeModelSrc(recommendation.name),
+        label: `${getSheetCakeLabel(recommendation.name)} Backup`
       }
     ];
   }
@@ -251,6 +627,24 @@ function addSymbolicSheetBadge(container, className = "") {
   badge.className = `symbolic-sheet-badge ${className}`.trim();
   badge.textContent = "*";
   container.appendChild(badge);
+}
+
+function getSheetCakeModelSrc(recommendationName) {
+  if (recommendationName.includes("1/4")) return "models/sheet_9x13.glb";
+  if (recommendationName.includes("1/2")) return "models/sheet_12x18.glb";
+  return "models/sheet_18x26.glb";
+}
+
+function normalizeCakePartScale(object, part = {}) {
+  if (part.sheetModelSrc) {
+    object.scale.setScalar(part.sheetScale || SHEET_MODEL_SCALE);
+  }
+}
+
+function applyCustomizerCakeDisplayScale(object, part = {}) {
+  if (part.sheetModelSrc) {
+    object.scale.multiplyScalar(CUSTOMIZER_SHEET_DISPLAY_SCALE);
+  }
 }
 
 function getMaterialRole(materialName = "") {
@@ -318,6 +712,58 @@ function applyTierColorsToObject(object, selection = {}) {
   });
 }
 
+function hexToModelViewerFactor(hex) {
+  const normalized = hex.replace("#", "");
+  const value = normalized.length === 3
+    ? normalized.split("").map((char) => char + char).join("")
+    : normalized;
+
+  const int = Number.parseInt(value, 16);
+  return [
+    ((int >> 16) & 255) / 255,
+    ((int >> 8) & 255) / 255,
+    (int & 255) / 255,
+    1
+  ];
+}
+
+function applyBlankTierColorsToModelViewer(viewer) {
+  const applyColors = () => {
+    const materials = viewer.model?.materials || [];
+    materials.forEach((material) => {
+      const role = getMaterialRole(material.name || "");
+      if (!role) return;
+
+      if (role === "filling") {
+        material.pbrMetallicRoughness?.setBaseColorFactor([1, 1, 1, 0]);
+        material.setAlphaMode?.("BLEND");
+        return;
+      }
+
+      const hex = defaultTierColors[role];
+      if (hex) {
+        material.pbrMetallicRoughness?.setBaseColorFactor(hexToModelViewerFactor(hex));
+      }
+    });
+  };
+
+  if (viewer.model) {
+    applyColors();
+  } else {
+    viewer.addEventListener("load", applyColors, { once: true });
+  }
+}
+
+async function loadCakePartModel(localLoader, part) {
+  const src = part.sheetModelSrc || `models/tier_${part.size}.glb`;
+  return new Promise((resolve, reject) => {
+    localLoader.load(src, (gltf) => {
+      normalizeCakePartScale(gltf.scene, part);
+      resolve(gltf);
+    }, undefined, reject);
+  });
+}
+
 function getSheetCakeLabel(recommendationName) {
   if (recommendationName.includes("1/4")) return "1/4 Sheet";
   if (recommendationName.includes("1/2")) return "1/2 Sheet";
@@ -374,7 +820,13 @@ function getRecommendationCardSections(recommendation) {
       {
         title: "Sheet Cake",
         detail: getSheetCakeLabel(recommendation.name),
-        visualType: "sheet"
+        visualType: "3d",
+        compact: true,
+        recommendation: {
+          name: recommendation.name,
+          type: "single-sheet",
+          servings: recommendation.servings
+        }
       }
     ];
   }
@@ -440,8 +892,13 @@ function getRecommendationCardSections(recommendation) {
       {
         title: "Sheet Cake",
         detail: getSheetCakeLabel(recommendation.name),
-        visualType: "sheet",
-        compact: true
+        visualType: "3d",
+        compact: true,
+        recommendation: {
+          name: recommendation.name,
+          type: "single-sheet",
+          servings: recommendation.servings
+        }
       }
     ];
   }
@@ -473,9 +930,7 @@ function buildRecommendationVisualLayout(container, recommendation) {
     stack.appendChild(sectionWrap);
 
     renderQueue.push(() => {
-      if (section.visualType === "sheet") {
-        visual.appendChild(createSheetCakePreviewNode(section.detail, "sheet-cake-preview-inline"));
-      } else if (section.recommendation) {
+      if (section.recommendation) {
         initRecommendationCake3D(visual, section.recommendation);
       }
     });
@@ -498,14 +953,7 @@ function initSheetComboPreview(container, recommendation) {
   roundPreview.className = "sheet-combo-round-preview";
 
   const sheetPreview = document.createElement("div");
-  sheetPreview.className = "sheet-cake-preview";
-  sheetPreview.setAttribute("aria-label", `${getSheetCakeLabel(recommendation.name)} cake`);
-  sheetPreview.innerHTML = `
-    <div class="sheet-cake-top"></div>
-    <div class="sheet-cake-side"></div>
-    <div class="sheet-cake-filling"></div>
-    <div class="sheet-cake-label">${getSheetCakeLabel(recommendation.name)}</div>
-  `;
+  sheetPreview.className = "sheet-combo-round-preview";
 
   wrapper.appendChild(roundPreview);
   wrapper.appendChild(sheetPreview);
@@ -517,6 +965,12 @@ function initSheetComboPreview(container, recommendation) {
   initRecommendationCake3D(roundPreview, {
     name: `${roundSize}" cake`,
     type: "single",
+    servings: recommendation.servings
+  });
+
+  initRecommendationCake3D(sheetPreview, {
+    name: recommendation.name,
+    type: "single-sheet",
     servings: recommendation.servings
   });
 }
@@ -637,10 +1091,6 @@ async function initCakeBuilder3D(recommendation) {
   await buildCake3D(parts);
   attachCakePicker();
 
-  if (recommendation.type === "sheet-combo") {
-    addSymbolicSheetBadge(container, "customizer-sheet-badge");
-  }
-
   animate();
 }
 
@@ -658,16 +1108,14 @@ async function buildCake3D(parts) {
 
   const mainParts = parts
     .map((part, partIndex) => ({ part, partIndex }))
-    .filter(({ part }) => part.kind === "main" && part.size)
+    .filter(({ part }) => part.kind === "main" && (part.size || part.sheetModelSrc))
     .sort((a, b) => b.part.size - a.part.size);
 
   for (const { part, partIndex } of mainParts) {
-
-    const gltf = await new Promise((resolve) => {
-      loader.load(`models/tier_${part.size}.glb`, resolve);
-    });
+    const gltf = await loadCakePartModel(loader, part);
 
     const tier = gltf.scene;
+    applyCustomizerCakeDisplayScale(tier, part);
 
     tier.traverse((child) => {
       child.userData.partIndex = partIndex;
@@ -689,6 +1137,7 @@ async function buildCake3D(parts) {
       object: tier,
       partIndex,
       kind: part.kind,
+      baseScale: tier.scale.x,
       homeX: tier.position.x,
       currentX: tier.position.x,
       targetX: tier.position.x
@@ -698,13 +1147,12 @@ async function buildCake3D(parts) {
   }
 
   for (const [partIndex, part] of parts.entries()) {
-    if (part.kind !== "backup" || !part.size) continue;
+    if (part.kind !== "backup" || (!part.size && !part.sheetModelSrc)) continue;
 
-    const gltf = await new Promise((resolve) => {
-      loader.load(`models/tier_${part.size}.glb`, resolve);
-    });
+    const gltf = await loadCakePartModel(loader, part);
 
     const backupTier = gltf.scene;
+    applyCustomizerCakeDisplayScale(backupTier, part);
 
     backupTier.traverse((child) => {
       child.userData.partIndex = partIndex;
@@ -724,6 +1172,7 @@ async function buildCake3D(parts) {
       object: backupTier,
       partIndex,
       kind: part.kind,
+      baseScale: backupTier.scale.x,
       homeX: sideOffset,
       currentX: sideOffset,
       targetX: sideOffset,
@@ -757,11 +1206,10 @@ async function buildCake3D(parts) {
 async function addExtraBackupCakeObject(selection, selectionIndex) {
   if (!selection?.size || !cakeSceneRoot || !loader) return null;
 
-  const gltf = await new Promise((resolve) => {
-    loader.load(`models/tier_${selection.size}.glb`, resolve);
-  });
+  const gltf = await loadCakePartModel(loader, selection);
 
   const backupTier = gltf.scene;
+  applyCustomizerCakeDisplayScale(backupTier, selection);
 
   backupTier.traverse((child) => {
     child.userData.partIndex = selectionIndex;
@@ -786,6 +1234,7 @@ async function addExtraBackupCakeObject(selection, selectionIndex) {
     object: backupTier,
     partIndex: selectionIndex,
     kind: "extra-backup",
+    baseScale: backupTier.scale.x,
     homeX: sideOffset,
     centerX: 0,
     currentX: hiddenOffset,
@@ -879,7 +1328,7 @@ function setActiveCakeTier(partIndex) {
 
     applyTierColorsToObject(object, selection);
 
-    object.scale.setScalar(1);
+    object.scale.setScalar(entry.baseScale ?? 1);
 
     object.traverse((child) => {
       if (!child.isMesh || !child.material) return;
@@ -926,6 +1375,22 @@ function initRecommendationCake3D(container, recommendation) {
   const ambient = new THREE.AmbientLight(0xffffff, 1.35);
   scene.add(ambient);
 
+  if (recommendation.type === "single-sheet") {
+    buildRecommendationCake3D(scene, [], null, getSheetCakeModelSrc(recommendation.name)).then((group) => {
+      group.scale.setScalar(1.34);
+      camera.position.set(0, 0.54, 2.45);
+      camera.lookAt(0, 0.18, 0);
+    });
+
+    function animateCard() {
+      requestAnimationFrame(animateCard);
+      renderer.render(scene, camera);
+    }
+
+    animateCard();
+    return;
+  }
+
   const allSizes = (recommendation.name.match(/\d+/g) || []).map(Number);
 
   let mainSizes = allSizes.slice().sort((a, b) => b - a);
@@ -947,10 +1412,6 @@ function initRecommendationCake3D(container, recommendation) {
     camera.lookAt(0, 0.46, 0);
   });
 
-  if (recommendation.type === "sheet-combo") {
-    addSymbolicSheetBadge(container, "recommendation-sheet-badge");
-  }
-
   function animateCard() {
     requestAnimationFrame(animateCard);
     renderer.render(scene, camera);
@@ -959,11 +1420,39 @@ function initRecommendationCake3D(container, recommendation) {
   animateCard();
 }
 
-async function buildRecommendationCake3D(scene, mainSizes, backupSize = null) {
+async function buildRecommendationCake3D(scene, mainSizes, backupSize = null, singleSheetModelSrc = null) {
   const localLoader = new GLTFLoader();
 
   const group = new THREE.Group();
   scene.add(group);
+
+  if (singleSheetModelSrc) {
+    const gltf = await new Promise((resolve, reject) => {
+      localLoader.load(singleSheetModelSrc, (loadedGltf) => {
+        normalizeCakePartScale(loadedGltf.scene, {
+          sheetModelSrc: singleSheetModelSrc,
+          sheetScale: RECOMMENDATION_SHEET_MODEL_SCALE
+        });
+        resolve(loadedGltf);
+      }, undefined, reject);
+    });
+
+    const sheetCake = gltf.scene;
+    prepareTierMaterials(sheetCake);
+    applyTierColorsToObject(sheetCake);
+    group.add(sheetCake);
+
+    const box = new THREE.Box3().setFromObject(group);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    group.position.x -= center.x;
+    group.position.z -= center.z;
+    group.position.y -= box.min.y;
+    group.position.y += 0.16;
+
+    return group;
+  }
 
   let currentHeight = 0;
   let maxMainRadius = 0;
@@ -1034,6 +1523,8 @@ async function buildRecommendationCake3D(scene, mainSizes, backupSize = null) {
 
 function initializeCakeFlow(guests, restoredState = null) {
   if (!Number.isFinite(guests) || guests <= 0) return;
+
+  showRecommendationsPageView();
 
   if (guestCountInput) {
     guestCountInput.value = guests;
@@ -1106,7 +1597,7 @@ const signatureFlavors = {
   "cinnamon-roll": {
     cake: "Vanilla",
     frosting: "Cream Cheese",
-    filling: "Cinnamon Brown Butter Ganache"
+    filling: "Cinnamon Sugar Ganache"
   },
   "london-fog": {
     cake: "Vanilla",
@@ -1596,13 +2087,7 @@ if ((isDevMode || restoredState?.view === "customizer" || restoredState?.view ==
 }
 
 function showCustomizer(recommendation, restoredCustomizerState = null, openSummaryOnLoad = false) {
-  const cakeModelWrap = cakeModel?.closest(".cake-3d-wrap");
-  if (cakeModelWrap) {
-    cakeModelWrap.style.display = "none";
-  }
-
-  document.getElementById("calculator-ui").style.display = "none";
-  document.getElementById("cake-visuals").style.display = "none";
+  showCustomizerPageView();
   document.getElementById("customizer").style.display = "block";
 
   const customizer = document.getElementById("customizer");
@@ -1633,7 +2118,9 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
 
     <div id="customizer-right">
   <div class="customizer-panel" id="flavor-panel">
-    <h3>Flavor</h3>
+    <button id="flavor-toggle" type="button" class="flavor-toggle" aria-expanded="true">
+      <span>Flavor</span>
+    </button>
 
     <div class="flavor-controls">
     <label for="signature-flavor">Signature Flavor</label>
@@ -1719,7 +2206,7 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
   <option>Blackberry Puree</option>
   <option>Blueberry Puree</option>
   <option>Chocolate Mousse</option>
-  <option>Cinnamon Brown Butter Ganache</option>
+  <option>Cinnamon Sugar Ganache</option>
   <option>Dulce De Leche</option>
   <option>Key Lime Curd</option>
   <option>Lemon Curd</option>
@@ -1893,15 +2380,18 @@ let activeTierIndex = Number.isInteger(restoredCustomizerState?.activeTierIndex)
 const priceTotal = document.getElementById("price-total");
 const servingsTotal = document.getElementById("servings-total");
 const orderSummaryBtn = document.getElementById("order-summary-btn");
+const flavorToggle = document.getElementById("flavor-toggle");
 const decorToggle = document.getElementById("decor-toggle");
 const decorContent = document.getElementById("decor-content");
 const decorOptionButtons = document.querySelectorAll(".decor-option-btn");
 const extraBackupToggle = document.getElementById("extra-backup-toggle");
 const extraBackupContent = document.getElementById("extra-backup-content");
 const extraBackupSizeButtons = document.querySelectorAll(".extra-backup-size-btn");
+const extraBackupSizeVisuals = document.querySelectorAll(".extra-backup-size-visual");
 
 decorContent.hidden = false;
 extraBackupContent.hidden = false;
+extraBackupSizeVisuals.forEach(applyBlankTierColorsToModelViewer);
 
 const selections = Array.isArray(restoredCustomizerState?.selections) && restoredCustomizerState.selections.length
   ? restoredCustomizerState.selections.map((selection) => ({
@@ -2172,6 +2662,14 @@ function closeDrawerMenus() {
   flavorPanel?.classList.remove("decor-drawer-open", "backup-drawer-open", "has-open-drawer");
 }
 
+function setFlavorCardExpanded(isExpanded) {
+  const flavorPanel = document.getElementById("flavor-panel");
+  if (!flavorPanel || !flavorToggle) return;
+
+  flavorPanel.classList.toggle("flavor-collapsed", !isExpanded);
+  flavorToggle.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+}
+
 function setDrawerState(drawerName, isOpen) {
   const flavorPanel = document.getElementById("flavor-panel");
   if (!flavorPanel) return;
@@ -2321,7 +2819,8 @@ function renderOrderRows() {
       removeButton.type = "button";
       removeButton.className = "tier-remove-btn";
       removeButton.dataset.index = index;
-      removeButton.textContent = "Delete";
+      removeButton.setAttribute("aria-label", "Remove backup cake");
+      removeButton.textContent = "x";
       tierRow.appendChild(removeButton);
     }
 
@@ -2433,8 +2932,8 @@ function installCustomizerKeyboardNav() {
     event.preventDefault();
 
     const direction = event.key === "ArrowRight" ? 1 : -1;
-    const currentIndex = activeTierIndex ?? (direction === 1 ? -1 : selections.length);
-    const nextIndex = Math.max(0, Math.min(selections.length - 1, currentIndex + direction));
+    const currentIndex = activeTierIndex ?? (direction === 1 ? -1 : 0);
+    const nextIndex = ((currentIndex + direction) % selections.length + selections.length) % selections.length;
 
     if (nextIndex !== activeTierIndex) {
       selectTier(nextIndex);
@@ -2482,6 +2981,20 @@ decorToggle.addEventListener("click", () => {
   const flavorPanel = document.getElementById("flavor-panel");
   const isOpen = flavorPanel?.classList.contains("decor-drawer-open");
   setDrawerState("decor", !isOpen);
+});
+
+flavorToggle.addEventListener("click", () => {
+  const flavorPanel = document.getElementById("flavor-panel");
+  const isCollapsed = flavorPanel?.classList.contains("flavor-collapsed");
+
+  if (isCollapsed) {
+    setFlavorCardExpanded(true);
+    closeDrawerMenus();
+    return;
+  }
+
+  closeDrawerMenus();
+  setFlavorCardExpanded(false);
 });
 
 decorOptionButtons.forEach((button) => {
@@ -2637,14 +3150,7 @@ function goBack() {
     customizerKeyHandler = null;
   }
 
-  const cakeModelWrap = cakeModel?.closest(".cake-3d-wrap");
-  if (cakeModelWrap) {
-    cakeModelWrap.style.display = "block";
-  }
-
-  document.getElementById("calculator-ui").style.display = "block";
-  document.getElementById("cake-visuals").style.display = "flex";
-  document.getElementById("customizer").style.display = "none";
+  showRecommendationsPageView();
   persistRecommendationState();
 }
 }
@@ -2653,6 +3159,12 @@ calculateButton?.addEventListener("click", () => {
   const guests = parseInt(guestCountInput?.value, 10);
   initializeCakeFlow(guests);
 });
+
+recommendationsBackButton?.addEventListener("click", () => {
+  returnToLandingPage();
+});
+
+initLandingHero();
 
 const restoredState = getSavedAppState();
 
