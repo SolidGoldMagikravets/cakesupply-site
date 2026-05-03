@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
+  <meta charset="UTF-8">
   <title>Cake Supply</title>
   <link rel="icon" href="pixilart-drawing.png">
   <link rel="stylesheet" href="style.css">
@@ -17,21 +18,43 @@
 
   <body>
 
+    <div class="site-header">
+      <div class="header-tab-group header-tab-group-left">
+        <button type="button" class="menu-tab" id="menu-tab">Menu</button>
+        <button type="button" class="gallery-tab" id="gallery-tab">Gallery</button>
+      </div>
+      <img src="primarylogo1.png" alt="Cake Supply" class="landing-logo" id="site-logo">
+      <div class="header-tab-group header-tab-group-right">
+        <button type="button" class="display-case-tab" id="display-case-tab">Live Display Case</button>
+        <button type="button" class="contact-tab" id="contact-tab">Contact</button>
+      </div>
+    </div>
+
     <div id="landing-page">
-      <img src="primarylogo1.png" alt="Cake Supply" class="landing-logo">
+      <div id="results-stage" class="results-stage">
+        <div class="cake-3d-wrap">
+          <div id="landing-cake-hero" class="landing-cake-hero" aria-hidden="true"></div>
+          <div id="calculator-ui">
+            <form class="calculator-search-row" action="javascript:void(0);">
+              <input
+                type="number"
+                id="guest-count"
+                placeholder="How many servings?"
+                aria-label="How many servings?">
 
-      <div class="cake-3d-wrap">
-        <div id="landing-cake-hero" class="landing-cake-hero" aria-hidden="true"></div>
-        <div id="calculator-ui">
-          <form class="calculator-search-row" action="javascript:void(0);">
-            <input
-              type="number"
-              id="guest-count"
-              placeholder="How many servings?"
-              aria-label="How many servings?">
-
-            <button id="calculate-btn" type="submit" aria-label="Find cake size">→</button>
-          </form>
+              <button id="calculate-btn" type="submit" aria-label="Find cake size">→</button>
+            </form>
+          </div>
+          <div id="hero-recommendation-meta" class="hero-recommendation-meta" aria-hidden="true">
+            <div id="hero-recommendation-label" class="visual-label"></div>
+            <button id="hero-customize-btn" class="customize-btn" type="button">Customize</button>
+          </div>
+        </div>
+        <div id="recommendations-page">
+          <div class="recommendations-header">
+            <button id="recommendations-back-btn" class="back-btn recommendations-back-btn" type="button">← Back</button>
+          </div>
+          <div id="cake-visuals"></div>
         </div>
       </div>
 
@@ -43,13 +66,11 @@
       <h2>Contact</h2>
       <p>Email me for custom cake inquiries.</p>
     </div>
-
-<div id="recommendations-page" style="display: none;">
-  <div class="recommendations-header">
-    <button id="recommendations-back-btn" class="back-btn recommendations-back-btn" type="button">← Back</button>
-  </div>
-  <div id="cake-visuals"></div>
-</div>
+    <div id="menu-page" aria-labelledby="menu-page-title" hidden>
+      <div class="menu-page-shell">
+        <div id="menu-grid" class="menu-grid"></div>
+      </div>
+    </div>
 <div id="customizer" style="display: none;"></div>
 
 <script type="module" src="script.js"></script>

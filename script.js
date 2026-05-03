@@ -5,12 +5,56 @@ const cakeModel = document.getElementById("cake-model");
 const landingCakeHero = document.getElementById("landing-cake-hero");
 const guestCountInput = document.getElementById("guest-count");
 const calculateButton = document.getElementById("calculate-btn");
+const calculatorForm = document.querySelector(".calculator-search-row");
+const calculatorUi = document.getElementById("calculator-ui");
+const heroRecommendationMeta = document.getElementById("hero-recommendation-meta");
+const heroRecommendationLabel = document.getElementById("hero-recommendation-label");
+const heroCustomizeButton = document.getElementById("hero-customize-btn");
 const landingPage = document.getElementById("landing-page");
+const menuPage = document.getElementById("menu-page");
+const menuGrid = document.getElementById("menu-grid");
 const recommendationsPage = document.getElementById("recommendations-page");
 const recommendationsBackButton = document.getElementById("recommendations-back-btn");
+const siteLogo = document.getElementById("site-logo");
+const menuTab = document.getElementById("menu-tab");
 const queryParams = new URLSearchParams(window.location.search);
 const isDevMode = queryParams.get("dev") === "1";
 const APP_STATE_KEY = "cake-supply-app-state";
+const LANDING_HERO_BASE_SCALE = 1.62;
+const LIVE_PREVIEW_DEBOUNCE_MS = 180;
+let activeHeroRecommendation = null;
+const HERO_SHARED_TRANSITION_MS = 720;
+let menuPreviewObserver = null;
+
+const CAKE_LIGHTING = {
+  key: 2.65,
+  fill: 0.72,
+  rim: 1.1,
+  ambient: 0.72
+};
+
+const cakeOptions = [
+  { name: '6" cake', servings: 10, type: 'round', size: 6 },
+  { name: '8" cake', servings: 18, type: 'round', size: 8 },
+  { name: '10" cake', servings: 32, type: 'round', size: 10 },
+  { name: '12" cake', servings: 47, type: 'round', size: 12 },
+  { name: '14" cake', servings: 70, type: 'round', size: 14 },
+  { name: '1/4 sheet cake', servings: 24, type: 'sheet' },
+  { name: '1/2 sheet cake', servings: 36, type: 'sheet' },
+  { name: 'full sheet cake', servings: 72, type: 'sheet' }
+];
+
+const tieredOptions = [
+  { tiers: [6, 8], servings: 28 },
+  { tiers: [8, 10], servings: 50 },
+  { tiers: [6, 8, 10], servings: 60 },
+  { tiers: [10, 12], servings: 79 },
+  { tiers: [8, 10, 12], servings: 97 },
+  { tiers: [6, 8, 10, 12], servings: 107 },
+  { tiers: [10, 12, 14], servings: 149 },
+  { tiers: [8, 10, 12, 14], servings: 167 },
+  { tiers: [6, 8, 10, 12, 14], servings: 177 }
+];
 
 function getSavedAppState() {
   try {
@@ -39,32 +83,238 @@ function clearSavedAppState() {
 }
 
 function showLandingPageView() {
+  teardownMenuPreviewObserver();
   if (landingPage) landingPage.style.display = "block";
-  if (recommendationsPage) recommendationsPage.style.display = "none";
+  if (menuPage) {
+    menuPage.style.display = "none";
+    menuPage.hidden = true;
+  }
+  if (recommendationsPage) recommendationsPage.style.display = "";
+  document.body.classList.remove("results-active");
+  document.body.classList.remove("menu-active");
+  document.body.classList.remove("customizer-active");
+  document.body.classList.remove("results-transitioning");
+  if (heroRecommendationMeta) {
+    heroRecommendationMeta.setAttribute("aria-hidden", "true");
+  }
   const customizerEl = document.getElementById("customizer");
   if (customizerEl) customizerEl.style.display = "none";
 }
 
 function showRecommendationsPageView() {
-  if (landingPage) landingPage.style.display = "none";
-  if (recommendationsPage) recommendationsPage.style.display = "block";
+  teardownMenuPreviewObserver();
+  if (landingPage) landingPage.style.display = "block";
+  if (menuPage) {
+    menuPage.style.display = "none";
+    menuPage.hidden = true;
+  }
+  if (recommendationsPage) recommendationsPage.style.display = "";
+  document.body.classList.add("results-active");
+  document.body.classList.remove("menu-active");
+  document.body.classList.remove("customizer-active");
+  if (heroRecommendationMeta) {
+    heroRecommendationMeta.setAttribute("aria-hidden", "false");
+  }
   const customizerEl = document.getElementById("customizer");
   if (customizerEl) customizerEl.style.display = "none";
 }
 
 function showCustomizerPageView() {
+  teardownMenuPreviewObserver();
+  document.body.classList.remove("results-active");
+  document.body.classList.remove("menu-active");
+  document.body.classList.add("customizer-active");
   if (landingPage) landingPage.style.display = "none";
-  if (recommendationsPage) recommendationsPage.style.display = "none";
+  if (menuPage) {
+    menuPage.style.display = "none";
+    menuPage.hidden = true;
+  }
   const customizerEl = document.getElementById("customizer");
   if (customizerEl) customizerEl.style.display = "block";
 }
 
+function showMenuPageView() {
+  if (landingPage) landingPage.style.display = "none";
+  if (menuPage) {
+    menuPage.hidden = false;
+    menuPage.style.display = "block";
+  }
+  if (recommendationsPage) recommendationsPage.style.display = "";
+  document.body.classList.remove("results-active");
+  document.body.classList.remove("customizer-active");
+  document.body.classList.remove("results-transitioning");
+  document.body.classList.add("menu-active");
+  const customizerEl = document.getElementById("customizer");
+  if (customizerEl) customizerEl.style.display = "none";
+}
+
 function returnToLandingPage() {
+  debouncedLandingHeroPreviewUpdate.cancel();
+  if (guestCountInput) {
+    guestCountInput.value = "";
+  }
+  activeHeroRecommendation = null;
+  pendingLandingHeroTierSizes = null;
+  landingHeroUsesBlankPreview = false;
   showLandingPageView();
   requestAnimationFrame(() => {
-    initLandingHero();
+    void initLandingHero().then(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          recenterLandingHeroGroup();
+        });
+      });
+
+      window.setTimeout(() => {
+        recenterLandingHeroGroup();
+      }, 460);
+    });
   });
   setSavedAppState(getRecommendationStatePayload(null, null, "landing"));
+}
+
+function openMenuPage() {
+  debouncedLandingHeroPreviewUpdate.cancel();
+  showMenuPageView();
+  renderMenuPage();
+  setSavedAppState({ view: "menu" });
+}
+
+function isSameRecommendation(left, right) {
+  return Boolean(left && right && left.name === right.name && left.type === right.type);
+}
+
+function renderHeroRecommendationCard(recommendation, getBasePrice) {
+  if (!heroRecommendationLabel || !heroCustomizeButton || !heroRecommendationMeta) return;
+
+  if (!recommendation) {
+    heroRecommendationLabel.innerHTML = "";
+    heroRecommendationMeta.setAttribute("aria-hidden", "true");
+    heroCustomizeButton.onclick = null;
+    return;
+  }
+
+  heroRecommendationLabel.innerHTML = `
+    <div class="recommendation-option-number">1</div>
+    <div class="servings">Serves ${recommendation.servings}</div>
+    <div class="recommendation-price-text">${formatPrice(getBasePrice(recommendation))}</div>
+  `;
+
+  heroRecommendationMeta.setAttribute("aria-hidden", document.body.classList.contains("results-active") ? "false" : "true");
+  heroCustomizeButton.onclick = () => {
+    showCustomizer(recommendation);
+  };
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+}
+
+function getHeroPreviewElement() {
+  return landingCakeHero?.querySelector("canvas") || landingCakeHero || null;
+}
+
+function getNearestPreviewRecommendationForGuests(guests) {
+  return activeHeroRecommendation || getNearestTieredPreviewRecommendation(guests);
+}
+
+function isRecommendationMatch(left, right) {
+  return Boolean(left && right && left.name === right.name && left.type === right.type);
+}
+
+function createHeroPreviewTransitionClone(sourceElement, sourceRect) {
+  const floatingClone = document.createElement("div");
+  floatingClone.classList.add("hero-shared-transition-clone");
+  floatingClone.style.position = "fixed";
+  floatingClone.style.left = `${sourceRect.left}px`;
+  floatingClone.style.top = `${sourceRect.top}px`;
+  floatingClone.style.width = `${sourceRect.width}px`;
+  floatingClone.style.height = `${sourceRect.height}px`;
+  floatingClone.style.pointerEvents = "none";
+  floatingClone.style.zIndex = "40";
+  floatingClone.style.transformOrigin = "top left";
+  floatingClone.style.willChange = "transform, opacity";
+  floatingClone.style.opacity = "1";
+
+  if (sourceElement instanceof HTMLCanvasElement) {
+    const canvasClone = document.createElement("canvas");
+    canvasClone.width = sourceElement.width;
+    canvasClone.height = sourceElement.height;
+    canvasClone.style.width = "100%";
+    canvasClone.style.height = "100%";
+
+    const context = canvasClone.getContext("2d");
+    if (context) {
+      context.drawImage(sourceElement, 0, 0);
+    }
+
+    floatingClone.appendChild(canvasClone);
+  } else {
+    const nodeClone = sourceElement.cloneNode(true);
+    if (nodeClone instanceof HTMLElement) {
+      nodeClone.style.width = "100%";
+      nodeClone.style.height = "100%";
+    }
+    floatingClone.appendChild(nodeClone);
+  }
+
+  return floatingClone;
+}
+
+function animateHeroPreviewIntoRecommendation(heroSnapshot, recommendation, onComplete) {
+  const sourceElement = heroSnapshot?.element;
+  const sourceRect = heroSnapshot?.rect;
+
+  if (!sourceElement || !sourceRect || !recommendation || prefersReducedMotion()) {
+    document.body.classList.remove("results-transitioning");
+    onComplete?.();
+    return;
+  }
+
+  const targetPreview = document.querySelector(
+    `.recommendation-cake-3d[data-recommendation-name="${CSS.escape(recommendation.name)}"][data-recommendation-type="${CSS.escape(recommendation.type)}"]`
+  );
+
+  if (!targetPreview) {
+    document.body.classList.remove("results-transitioning");
+    onComplete?.();
+    return;
+  }
+
+  const targetRect = targetPreview.getBoundingClientRect();
+  if (!targetRect.width || !targetRect.height) {
+    document.body.classList.remove("results-transitioning");
+    onComplete?.();
+    return;
+  }
+
+  document.body.classList.add("results-transitioning");
+
+  const floatingClone = createHeroPreviewTransitionClone(sourceElement, sourceRect);
+  const deltaX = targetRect.left - sourceRect.left;
+  const deltaY = targetRect.top - sourceRect.top;
+  const scaleX = targetRect.width / sourceRect.width;
+  const scaleY = targetRect.height / sourceRect.height;
+
+  targetPreview.style.opacity = "0";
+  targetPreview.style.visibility = "hidden";
+  document.body.appendChild(floatingClone);
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      floatingClone.style.transition = `transform ${HERO_SHARED_TRANSITION_MS}ms cubic-bezier(0.19, 0.9, 0.22, 1), opacity ${HERO_SHARED_TRANSITION_MS}ms ease-out`;
+      floatingClone.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})`;
+      floatingClone.style.opacity = "0.96";
+    });
+  });
+
+  window.setTimeout(() => {
+    floatingClone.remove();
+    targetPreview.style.opacity = "";
+    targetPreview.style.visibility = "";
+    document.body.classList.remove("results-transitioning");
+    onComplete?.();
+  }, HERO_SHARED_TRANSITION_MS + 40);
 }
 
 let cake3DMaterials = {
@@ -189,6 +439,83 @@ let landingHeroGroup = null;
 let landingHeroTierEntries = [];
 let landingHeroResizeHandler = null;
 let landingHeroStepTimeouts = [];
+let pendingLandingHeroTierSizes = null;
+let landingHeroSceneIndex = 0;
+let landingHeroUsesBlankPreview = false;
+
+function debounce(callback, wait) {
+  let timeoutId = null;
+
+  const debounced = (...args) => {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = window.setTimeout(() => {
+      timeoutId = null;
+      callback(...args);
+    }, wait);
+  };
+
+  debounced.cancel = () => {
+    if (!timeoutId) return;
+    clearTimeout(timeoutId);
+    timeoutId = null;
+  };
+
+  return debounced;
+}
+
+function parseGuestCountValue(rawValue) {
+  const parsedValue = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsedValue) || parsedValue <= 0) return null;
+  return parsedValue;
+}
+
+function scoreTieredOptionForGuests(tierOption, guests) {
+  let excess = tierOption.servings - guests;
+  const tierCount = tierOption.tiers.length;
+  const smallestTier = Math.min(...tierOption.tiers);
+
+  if (guests < 60 && tierCount > 2) {
+    excess += 2;
+  }
+
+  if (guests > 40 && smallestTier < 8) {
+    if (smallestTier === 6) {
+      excess += 0;
+    } else {
+      excess += 10;
+    }
+  }
+
+  return excess;
+}
+
+function getNearestTieredPreviewRecommendation(guests) {
+  if (!Number.isFinite(guests) || guests <= 0) return null;
+
+  const viableTieredOptions = tieredOptions.filter((tierOption) => tierOption.servings >= guests);
+  const candidateOptions = viableTieredOptions.length ? viableTieredOptions : tieredOptions;
+
+  const bestTierOption = candidateOptions.reduce((bestOption, tierOption) => {
+    const score = viableTieredOptions.length
+      ? scoreTieredOptionForGuests(tierOption, guests)
+      : Math.abs(tierOption.servings - guests);
+
+    if (!bestOption || score < bestOption.score) {
+      return { tierOption, score };
+    }
+
+    return bestOption;
+  }, null)?.tierOption;
+
+  if (!bestTierOption) return null;
+
+  return {
+    name: `${bestTierOption.tiers.slice().sort((a, b) => a - b).map((size) => `${size}"`).join(' + ')} tiered cake`,
+    servings: bestTierOption.servings,
+    type: "tiered",
+    tiers: bestTierOption.tiers.slice().sort((a, b) => a - b)
+  };
+}
 
 function getFlavorColor(map, key, fallback) {
   return map[key] || fallback;
@@ -240,9 +567,6 @@ function applyLandingHeroSceneImmediately(sceneIndex) {
       frosting: colors.frosting.clone(),
       filling: colors.filling ? colors.filling.clone() : null
     };
-    entry.currentX = entry.homeX;
-    entry.targetX = entry.homeX;
-    entry.object.position.x = entry.homeX;
 
     entry.object.traverse((child) => {
       if (!child.isMesh || !child.material) return;
@@ -270,6 +594,89 @@ function clearLandingHeroStepTimeouts() {
   landingHeroStepTimeouts = [];
 }
 
+function getVisibleLandingHeroBox() {
+  const visibleEntries = landingHeroTierEntries
+    .filter((entry) => entry.object.visible)
+    .slice()
+    .sort((a, b) => b.size - a.size);
+
+  if (!visibleEntries.length) return null;
+
+  const visibleBoxes = visibleEntries.map((entry) => new THREE.Box3().setFromObject(entry.object));
+  return visibleBoxes.reduce((combinedBox, box) => combinedBox.union(box), visibleBoxes[0].clone());
+}
+
+function getLandingHeroTargetMetrics() {
+  if (!landingHeroGroup || !landingHeroCamera || !landingCakeHero || !calculatorUi) return;
+
+  const heroRect = landingCakeHero.getBoundingClientRect();
+  const calculatorRect = calculatorUi.getBoundingClientRect();
+  if (!heroRect.height || !calculatorRect.height) return;
+
+  const targetPixelX = (calculatorRect.left - heroRect.left) + (calculatorRect.width / 2);
+  const targetPixelY = (calculatorRect.top - heroRect.top) + (calculatorRect.height / 2);
+  const ndc = new THREE.Vector2(
+    (targetPixelX / heroRect.width) * 2 - 1,
+    -((targetPixelY / heroRect.height) * 2 - 1)
+  );
+
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(ndc, landingHeroCamera);
+
+  // Intersect the ray with the hero's center plane so the cake center can lock to the field center.
+  const targetPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+  const targetPoint = new THREE.Vector3();
+  const didIntersect = raycaster.ray.intersectPlane(targetPlane, targetPoint);
+
+  return didIntersect ? { heroRect, targetPixelY, targetPoint } : null;
+}
+
+function recenterLandingHeroGroup() {
+  if (!landingHeroGroup || !landingHeroTierEntries.length) return;
+
+  const heroBox = getVisibleLandingHeroBox();
+  if (!heroBox) return;
+
+  const heroCenter = new THREE.Vector3();
+  heroBox.getCenter(heroCenter);
+
+  landingHeroGroup.scale.setScalar(LANDING_HERO_BASE_SCALE);
+
+  const targetMetrics = getLandingHeroTargetMetrics();
+
+  if (targetMetrics) {
+    landingHeroGroup.position.x += targetMetrics.targetPoint.x - heroCenter.x;
+    landingHeroGroup.position.y += targetMetrics.targetPoint.y - heroCenter.y;
+  } else {
+    landingHeroGroup.position.x -= heroCenter.x;
+  }
+
+  landingHeroGroup.position.z -= heroCenter.z;
+}
+
+function setLandingHeroTierConfiguration(activeTierSizes = null) {
+  if (!landingHeroGroup || !landingHeroTierEntries.length) return;
+
+  const activeSizes = activeTierSizes ? new Set(activeTierSizes) : null;
+
+  landingHeroTierEntries.forEach((entry) => {
+    entry.object.visible = !activeSizes || activeSizes.has(entry.size);
+  });
+
+  const visibleEntries = landingHeroTierEntries
+    .filter((entry) => entry.object.visible)
+    .slice()
+    .sort((a, b) => b.size - a.size);
+
+  let currentHeight = 0;
+  visibleEntries.forEach((entry) => {
+    entry.object.position.set(0, currentHeight, 0);
+    currentHeight += entry.tierHeight;
+  });
+
+  recenterLandingHeroGroup();
+}
+
 function queueLandingHeroSceneTransition(sceneIndex) {
   if (!landingHeroTierEntries.length) return;
 
@@ -289,26 +696,80 @@ function queueLandingHeroSceneTransition(sceneIndex) {
           ? colorToThree(getFlavorColor(fillingColorMap, combo.filling, defaultTierColors.filling))
           : null
       };
-
-      const direction = index % 2 === 0 ? -1 : 1;
-      entry.currentX = entry.homeX + (0.08 * direction);
-      entry.targetX = entry.homeX;
-      entry.object.position.x = entry.currentX;
     }, index * 7000);
 
     landingHeroStepTimeouts.push(timeoutId);
   });
 }
 
+function applyLandingHeroBlankPreviewColors() {
+  if (!landingHeroTierEntries.length) return;
+
+  clearLandingHeroStepTimeouts();
+
+  landingHeroTierEntries.forEach((entry) => {
+    const colors = {
+      cake: colorToThree(defaultTierColors.cake),
+      frosting: colorToThree(defaultTierColors.frosting),
+      filling: null
+    };
+
+    entry.targetColors = colors;
+    entry.currentColors = {
+      cake: colors.cake.clone(),
+      frosting: colors.frosting.clone(),
+      filling: null
+    };
+
+    applyTierColorsToObject(entry.object, {
+      flavor: "",
+      frosting: "",
+      filling: ""
+    });
+
+    entry.object.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((material) => {
+        const role = material.userData?.role;
+
+        if (role === "filling") {
+          material.transparent = true;
+          material.opacity = 0;
+          return;
+        }
+
+        const current = entry.currentColors[role];
+        if (current && material.color) {
+          material.color.copy(current);
+        }
+      });
+    });
+  });
+}
+
+function syncLandingHeroPreviewMode(useBlankPreview) {
+  if (!landingHeroTierEntries.length) return;
+  if (landingHeroUsesBlankPreview === useBlankPreview) return;
+
+  landingHeroUsesBlankPreview = useBlankPreview;
+
+  if (useBlankPreview) {
+    applyLandingHeroBlankPreviewColors();
+    return;
+  }
+
+  applyLandingHeroSceneImmediately(landingHeroSceneIndex);
+  queueLandingHeroSceneTransition(landingHeroSceneIndex);
+}
+
 function updateLandingHeroTierColors() {
+  if (landingHeroUsesBlankPreview) return;
+
   landingHeroTierEntries.forEach((entry) => {
     const { object, currentColors, targetColors } = entry;
     if (!object || !targetColors) return;
-
-    if (typeof entry.currentX === "number" && typeof entry.targetX === "number") {
-      entry.currentX += (entry.targetX - entry.currentX) * 0.16;
-      object.position.x = entry.currentX;
-    }
 
     Object.keys(currentColors).forEach((role) => {
       const current = currentColors[role];
@@ -383,19 +844,19 @@ async function initLandingHero() {
   landingHeroRenderer.setSize(width, height);
   landingCakeHero.appendChild(landingHeroRenderer.domElement);
 
-  const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+  const keyLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.key);
   keyLight.position.set(3.5, 5.5, 4);
   landingHeroScene.add(keyLight);
 
-  const fillLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  const fillLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.fill);
   fillLight.position.set(-3.5, 3.5, 3);
   landingHeroScene.add(fillLight);
 
-  const rimLight = new THREE.DirectionalLight(0xffffff, 0.85);
+  const rimLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.rim);
   rimLight.position.set(0, 2.5, -4);
   landingHeroScene.add(rimLight);
 
-  landingHeroScene.add(new THREE.AmbientLight(0xffffff, 1.45));
+  landingHeroScene.add(new THREE.AmbientLight(0xffffff, CAKE_LIGHTING.ambient));
 
   landingHeroGroup = new THREE.Group();
   landingHeroScene.add(landingHeroGroup);
@@ -409,21 +870,26 @@ async function initLandingHero() {
       localLoader.load(`models/tier_${size}.glb`, resolve, undefined, reject);
     });
 
-    const tier = gltf.scene;
-    prepareTierMaterials(tier);
+    const tierModel = gltf.scene;
+    prepareTierMaterials(tierModel);
 
-    const box = new THREE.Box3().setFromObject(tier);
+    const box = new THREE.Box3().setFromObject(tierModel);
     const tierHeight = box.max.y - box.min.y;
+    const tierCenterX = (box.min.x + box.max.x) / 2;
+    const tierCenterZ = (box.min.z + box.max.z) / 2;
+
+    tierModel.position.set(-tierCenterX, -box.min.y, -tierCenterZ);
+
+    const tier = new THREE.Group();
+    tier.add(tierModel);
 
     tier.position.set(0, currentHeight, 0);
     landingHeroGroup.add(tier);
 
     landingHeroTierEntries.unshift({
       size,
+      tierHeight,
       object: tier,
-      homeX: 0,
-      currentX: 0,
-      targetX: 0,
       currentColors: {
         cake: colorToThree(defaultTierColors.cake),
         frosting: colorToThree(defaultTierColors.frosting),
@@ -447,14 +913,17 @@ async function initLandingHero() {
   landingHeroGroup.position.z -= heroCenter.z;
   landingHeroGroup.position.y -= heroBox.min.y;
   landingHeroGroup.position.y += 0.12;
-  landingHeroGroup.scale.setScalar(1.82);
+  landingHeroGroup.scale.setScalar(LANDING_HERO_BASE_SCALE);
 
-  let sceneIndex = 0;
-  applyLandingHeroSceneImmediately(sceneIndex);
+  landingHeroSceneIndex = 0;
+  landingHeroUsesBlankPreview = false;
+  applyLandingHeroSceneImmediately(landingHeroSceneIndex);
+  setLandingHeroTierConfiguration(pendingLandingHeroTierSizes);
 
   landingHeroInterval = window.setInterval(() => {
-    sceneIndex = (sceneIndex + 1) % landingHeroScenes.length;
-    queueLandingHeroSceneTransition(sceneIndex);
+    if (landingHeroUsesBlankPreview) return;
+    landingHeroSceneIndex = (landingHeroSceneIndex + 1) % landingHeroScenes.length;
+    queueLandingHeroSceneTransition(landingHeroSceneIndex);
   }, landingHeroTierEntries.length * 7000);
 
   const animateLandingHero = () => {
@@ -473,6 +942,7 @@ async function initLandingHero() {
     landingHeroCamera.aspect = nextWidth / nextHeight;
     landingHeroCamera.updateProjectionMatrix();
     landingHeroRenderer.setSize(nextWidth, nextHeight);
+    recenterLandingHeroGroup();
   };
 
   window.addEventListener("resize", landingHeroResizeHandler);
@@ -647,6 +1117,22 @@ function applyCustomizerCakeDisplayScale(object, part = {}) {
   }
 }
 
+function normalizeCakeModelBounds(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  const centerX = (box.min.x + box.max.x) / 2;
+  const centerZ = (box.min.z + box.max.z) / 2;
+
+  object.position.x -= centerX;
+  object.position.y -= box.min.y;
+  object.position.z -= centerZ;
+
+  return {
+    height: box.max.y - box.min.y,
+    width: box.max.x - box.min.x,
+    depth: box.max.z - box.min.z
+  };
+}
+
 function getMaterialRole(materialName = "") {
   const normalized = materialName.toLowerCase();
 
@@ -665,11 +1151,14 @@ function prepareTierMaterials(root) {
 
     child.material = materials.map((material) => {
       const clonedMaterial = material.clone();
-      clonedMaterial.roughness = 0.6;
+      const role = getMaterialRole(clonedMaterial.name);
+
+      clonedMaterial.roughness = role === "cake" ? 0.54 : (clonedMaterial.roughness ?? 0.48);
       clonedMaterial.metalness = 0.0;
+      clonedMaterial.envMapIntensity = role === "frosting" ? 0.55 : 0.35;
       clonedMaterial.userData = {
         ...clonedMaterial.userData,
-        role: getMaterialRole(clonedMaterial.name)
+        role
       };
       return clonedMaterial;
     });
@@ -772,6 +1261,267 @@ function getSheetCakeLabel(recommendationName) {
 
 function formatPrice(amount) {
   return `$${amount}`;
+}
+
+function formatSignatureFlavorName(slug = "") {
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+const menuSignatureFlavors = {
+  "original-vanilla": { cake: "Vanilla", frosting: "Vanilla Buttercream", filling: "Vanilla Custard" },
+  "passionberry": { cake: "Vanilla", frosting: "Raspberry Buttercream", filling: "Passionfruit Curd" },
+  "blueberry-cheesecake": { cake: "Vanilla", frosting: "Cream Cheese", filling: "Blueberry Puree" },
+  "cinnamon-roll": { cake: "Vanilla", frosting: "Cream Cheese", filling: "Cinnamon Sugar Ganache" },
+  "london-fog": { cake: "Vanilla", frosting: "Cream Cheese", filling: "Orange Marmalade" },
+  "strawberry-shortcake": { cake: "Vanilla", frosting: "Cream Cheese", filling: "Strawberry Puree" },
+  "strawberry-key-lime": { cake: "Vanilla", frosting: "Strawberry Cream Cheese", filling: "Key Lime Curd" },
+  "white-chocolate-raspberry": { cake: "Vanilla", frosting: "White Chocolate Ganache", filling: "Raspberry Puree" },
+  "pancake": { cake: "Vanilla", frosting: "White Chocolate Ganache", filling: "Vanilla Custard" },
+  "zebra": { cake: "Marble", frosting: "Raspberry Buttercream", filling: "Blackberry Puree" },
+  "red-velvet": { cake: "Marble", frosting: "White Chocolate Ganache", filling: "" },
+  "original-chocolate": { cake: "Chocolate", frosting: "Chocolate Mousse", filling: "" },
+  "tuxedo": { cake: "Chocolate", frosting: "Chocolate Mousse", filling: "White Chocolate Ganache" },
+  "raspberry-chocolate-mousse": { cake: "Chocolate", frosting: "Chocolate Mousse", filling: "Raspberry Puree" },
+  "cookies-and-cream": { cake: "Chocolate", frosting: "Oreo Buttercream", filling: "" },
+  "black-forrest": { cake: "Chocolate", frosting: "Chocolate Buttercream", filling: "Mixed Berry Jam" },
+  "mocha": { cake: "Chocolate", frosting: "Coffee Buttercream", filling: "Dulce De Leche" },
+  "lemon-blueberry": { cake: "Lemon", frosting: "Lemon Buttercream", filling: "Blueberry Puree" },
+  "carrot": { cake: "Spice", frosting: "Cream Cheese", filling: "" },
+  "apple-cider": { cake: "Spice", frosting: "Cinnamon Honey Buttercream", filling: "Apple Pie Filling" },
+  "horchata": { cake: "Spice", frosting: "Horchata Buttercream", filling: "Dulce De Leche" },
+  "cranberry-orange": { cake: "Spice", frosting: "Cranberry Buttercream", filling: "Orange Marmalade" },
+  "coconut-cream": { cake: "Coconut", frosting: "Coconut Cream Buttercream", filling: "Vanilla Custard" },
+  "key-lime-coconut": { cake: "Coconut", frosting: "White Chocolate Ganache", filling: "Key Lime Curd" },
+  "almond-joy": { cake: "Almond", frosting: "Coconut Cream Buttercream", filling: "Chocolate Mousse" },
+  "bee-sting": { cake: "Almond", frosting: "Cinnamon Honey Buttercream", filling: "Vanilla Custard" }
+};
+
+const menuSignatureFlavorOrder = [
+  "original-vanilla",
+  "blueberry-cheesecake",
+  "cinnamon-roll",
+  "london-fog",
+  "pancake",
+  "passionberry",
+  "strawberry-key-lime",
+  "strawberry-shortcake",
+  "white-chocolate-raspberry",
+  "original-chocolate",
+  "black-forrest",
+  "cookies-and-cream",
+  "mocha",
+  "raspberry-chocolate-mousse",
+  "red-velvet",
+  "tuxedo",
+  "zebra",
+  "almond-joy",
+  "coconut-cream",
+  "cranberry-orange",
+  "key-lime-coconut",
+  "lemon-blueberry",
+  "apple-cider",
+  "bee-sting",
+  "carrot",
+  "horchata"
+];
+
+function getMenuFlavorCards() {
+  return menuSignatureFlavorOrder
+    .filter((slug) => menuSignatureFlavors[slug])
+    .map((slug) => ({
+      slug,
+      name: formatSignatureFlavorName(slug),
+      selection: menuSignatureFlavors[slug]
+    }));
+}
+
+function buildMenuFlavorCake3D(scene, selection) {
+  return buildRecommendationCake3D(scene, [10]).then((group) => {
+    applyTierColorsToObject(group, selection);
+    return group;
+  });
+}
+
+function disposeMenuPreviewObject(root) {
+  root?.traverse?.((child) => {
+    if (child.geometry) {
+      child.geometry.dispose?.();
+    }
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.filter(Boolean).forEach((material) => material.dispose?.());
+  });
+}
+
+function initMenuFlavorCake3D(container, selection) {
+  container.innerHTML = "";
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf8f8f8);
+
+  const width = container.clientWidth || 320;
+  const height = container.clientHeight || 270;
+  const camera = new THREE.PerspectiveCamera(32, width / height, 0.1, 100);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(width, height);
+  container.appendChild(renderer.domElement);
+
+  const light = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.key);
+  light.position.set(3, 5, 3);
+  scene.add(light);
+
+  const fillLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.fill);
+  fillLight.position.set(-3, 3, 3);
+  scene.add(fillLight);
+
+  const rimLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.rim);
+  rimLight.position.set(0, 2.4, -3.4);
+  scene.add(rimLight);
+
+  const ambient = new THREE.AmbientLight(0xffffff, CAKE_LIGHTING.ambient);
+  scene.add(ambient);
+
+  let animationFrameId = null;
+  let isDisposed = false;
+  let cakeGroup = null;
+
+  buildMenuFlavorCake3D(scene, selection).then((group) => {
+    if (isDisposed) {
+      disposeMenuPreviewObject(group);
+      return;
+    }
+
+    cakeGroup = group;
+    group.scale.setScalar(1.52);
+    camera.position.set(0, 0.78, 1.78);
+    camera.lookAt(0, 0.46, 0);
+  });
+
+  function animateCard() {
+    if (isDisposed) return;
+    animationFrameId = requestAnimationFrame(animateCard);
+    renderer.render(scene, camera);
+  }
+
+  animateCard();
+
+  return () => {
+    isDisposed = true;
+    if (animationFrameId !== null) {
+      cancelAnimationFrame(animationFrameId);
+    }
+    if (cakeGroup) {
+      disposeMenuPreviewObject(cakeGroup);
+    }
+    renderer.dispose();
+    container.innerHTML = "";
+  };
+}
+
+function teardownMenuPreviewObserver() {
+  if (menuPreviewObserver) {
+    menuPreviewObserver.disconnect();
+    menuPreviewObserver = null;
+  }
+
+  if (!menuGrid) return;
+
+  menuGrid.querySelectorAll(".menu-flavor-preview").forEach((preview) => {
+    if (typeof preview._menuPreviewCleanup === "function") {
+      preview._menuPreviewCleanup();
+      preview._menuPreviewCleanup = null;
+    }
+  });
+}
+
+function setupMenuPreviewObserver() {
+  if (!menuGrid) return;
+
+  teardownMenuPreviewObserver();
+
+  menuPreviewObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      const preview = entry.target;
+      const flavorSlug = preview.dataset.flavorSlug;
+      const selection = flavorSlug ? menuSignatureFlavors[flavorSlug] : null;
+
+      if (!selection) return;
+
+      if (entry.isIntersecting) {
+        if (!preview._menuPreviewCleanup) {
+          preview._menuPreviewCleanup = initMenuFlavorCake3D(preview, selection);
+        }
+      } else if (preview._menuPreviewCleanup) {
+        preview._menuPreviewCleanup();
+        preview._menuPreviewCleanup = null;
+      }
+    });
+  }, {
+    rootMargin: "240px 0px"
+  });
+
+  menuGrid.querySelectorAll(".menu-flavor-preview").forEach((preview) => {
+    menuPreviewObserver.observe(preview);
+  });
+}
+
+function renderMenuPage() {
+  if (!menuGrid) return;
+
+  if (menuGrid.dataset.rendered === "true") {
+    setupMenuPreviewObserver();
+    return;
+  }
+
+  menuGrid.innerHTML = "";
+
+  getMenuFlavorCards().forEach((flavor) => {
+    const card = document.createElement("article");
+    card.className = "menu-flavor-card";
+
+    const text = document.createElement("div");
+    text.className = "menu-flavor-copy";
+    text.innerHTML = `
+      <h2 class="menu-flavor-name">${flavor.name}</h2>
+      <p class="menu-flavor-combo">${flavor.selection.cake} Cake</p>
+      <p class="menu-flavor-combo">${flavor.selection.frosting}${flavor.selection.filling ? `, ${flavor.selection.filling}` : ""}</p>
+    `;
+
+    const preview = document.createElement("div");
+    preview.className = "menu-flavor-preview recommendation-cake-3d";
+    preview.setAttribute("aria-hidden", "true");
+    preview.dataset.flavorSlug = flavor.slug;
+
+    card.appendChild(text);
+    card.appendChild(preview);
+    menuGrid.appendChild(card);
+  });
+
+  menuGrid.dataset.rendered = "true";
+  setupMenuPreviewObserver();
+}
+
+function formatRecommendationDisplayName(recommendation) {
+  const name = recommendation?.name || "";
+  const sizes = (name.match(/\d+/g) || []).map(Number);
+
+  if (recommendation?.type === "tiered") {
+    return `${sizes.sort((a, b) => a - b).map((size) => `${size}`).join(" + ")}" Tiered`;
+  }
+
+  if (recommendation?.type === "tiered-round-backup") {
+    const tierSizes = sizes.slice(0, -1).sort((a, b) => a - b);
+    const backupSize = sizes[sizes.length - 1];
+    return `${tierSizes.map((size) => `${size}`).join(" + ")}" Tiered, ${backupSize}" Backup`;
+  }
+
+  return name.replace(/\b([a-z])/g, (match) => match.toUpperCase());
 }
 
 function getTierDisplayText(sizes) {
@@ -1076,15 +1826,19 @@ async function initCakeBuilder3D(recommendation) {
 
   loader = new GLTFLoader();
 
-  const light = new THREE.DirectionalLight(0xffffff, 2.3);
+  const light = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.key);
   light.position.set(3, 5, 4);
   scene.add(light);
 
-  const fillLight = new THREE.DirectionalLight(0xffffff, 1.25);
+  const fillLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.fill);
   fillLight.position.set(-3, 3, 4);
   scene.add(fillLight);
 
-  const ambient = new THREE.AmbientLight(0xffffff, 1.55);
+  const rimLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.rim);
+  rimLight.position.set(0, 2.4, -3.6);
+  scene.add(rimLight);
+
+  const ambient = new THREE.AmbientLight(0xffffff, CAKE_LIGHTING.ambient);
   scene.add(ambient);
 
   const parts = getRecommendationParts(recommendation);
@@ -1123,11 +1877,9 @@ async function buildCake3D(parts) {
     prepareTierMaterials(tier);
     applyTierColorsToObject(tier);
 
-    const box = new THREE.Box3().setFromObject(tier);
-    const height = box.max.y - box.min.y;
-    const width = box.max.x - box.min.x;
+    const { height, width } = normalizeCakeModelBounds(tier);
 
-    tier.position.y = currentHeight;
+    tier.position.y += currentHeight;
     group.add(tier);
 
     const radius = width / 2;
@@ -1160,12 +1912,11 @@ async function buildCake3D(parts) {
     prepareTierMaterials(backupTier);
     applyTierColorsToObject(backupTier);
 
-    const backupBox = new THREE.Box3().setFromObject(backupTier);
-    const backupWidth = backupBox.max.x - backupBox.min.x;
+    const { width: backupWidth } = normalizeCakeModelBounds(backupTier);
     const backupRadius = backupWidth / 2;
 
     const sideOffset = maxMainRadius + backupRadius + 0.08;
-    backupTier.position.set(sideOffset, 0, 0);
+    backupTier.position.x += sideOffset;
     group.add(backupTier);
 
     cakeObjects.push({
@@ -1216,6 +1967,7 @@ async function addExtraBackupCakeObject(selection, selectionIndex) {
   });
   prepareTierMaterials(backupTier);
   applyTierColorsToObject(backupTier, selection);
+  normalizeCakeModelBounds(backupTier);
 
   const mainEntries = cakeObjects.filter((entry) => entry.kind === "main");
   const mainBox = new THREE.Box3();
@@ -1227,7 +1979,7 @@ async function addExtraBackupCakeObject(selection, selectionIndex) {
   const sideOffset = mainWidth / 2 + backupWidth / 2 + 0.08;
   const hiddenOffset = sideOffset + backupWidth + 1.2;
 
-  backupTier.position.set(hiddenOffset, 0, 0);
+  backupTier.position.x += hiddenOffset;
   cakeSceneRoot.add(backupTier);
 
   const entry = {
@@ -1364,15 +2116,19 @@ function initRecommendationCake3D(container, recommendation) {
   renderer.setSize(width, height);
   container.appendChild(renderer.domElement);
 
-  const light = new THREE.DirectionalLight(0xffffff, 2.2);
+  const light = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.key);
   light.position.set(3, 5, 3);
   scene.add(light);
 
-  const fillLight = new THREE.DirectionalLight(0xffffff, 1.1);
+  const fillLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.fill);
   fillLight.position.set(-3, 3, 3);
   scene.add(fillLight);
 
-  const ambient = new THREE.AmbientLight(0xffffff, 1.35);
+  const rimLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.rim);
+  rimLight.position.set(0, 2.4, -3.4);
+  scene.add(rimLight);
+
+  const ambient = new THREE.AmbientLight(0xffffff, CAKE_LIGHTING.ambient);
   scene.add(ambient);
 
   if (recommendation.type === "single-sheet") {
@@ -1463,23 +2219,15 @@ async function buildRecommendationCake3D(scene, mainSizes, backupSize = null, si
     });
 
     const tier = gltf.scene;
+    prepareTierMaterials(tier);
+    applyTierColorsToObject(tier);
 
-    tier.traverse((child) => {
-      if (child.isMesh && child.material) {
-        child.material = child.material.clone();
-        child.material.roughness = 0.6;
-        child.material.metalness = 0.0;
-      }
-    });
-
-    const box = new THREE.Box3().setFromObject(tier);
-    const height = box.max.y - box.min.y;
-    const width = box.max.x - box.min.x;
+    const { height, width } = normalizeCakeModelBounds(tier);
 
     const radius = width / 2;
     if (radius > maxMainRadius) maxMainRadius = radius;
 
-    tier.position.set(0, currentHeight, 0);
+    tier.position.y += currentHeight;
     group.add(tier);
 
     currentHeight += height;
@@ -1491,21 +2239,14 @@ async function buildRecommendationCake3D(scene, mainSizes, backupSize = null, si
     });
 
     const backupTier = backupGltf.scene;
+    prepareTierMaterials(backupTier);
+    applyTierColorsToObject(backupTier);
 
-    backupTier.traverse((child) => {
-      if (child.isMesh && child.material) {
-        child.material = child.material.clone();
-        child.material.roughness = 0.6;
-        child.material.metalness = 0.0;
-      }
-    });
-
-    const backupBox = new THREE.Box3().setFromObject(backupTier);
-    const backupWidth = backupBox.max.x - backupBox.min.x;
+    const { width: backupWidth } = normalizeCakeModelBounds(backupTier);
     const backupRadius = backupWidth / 2;
 
     const sideOffset = maxMainRadius + backupRadius + 0.06;
-    backupTier.position.set(sideOffset, 0, 0);
+    backupTier.position.x += sideOffset;
     group.add(backupTier);
   }
 
@@ -1524,36 +2265,18 @@ async function buildRecommendationCake3D(scene, mainSizes, backupSize = null, si
 function initializeCakeFlow(guests, restoredState = null) {
   if (!Number.isFinite(guests) || guests <= 0) return;
 
+  const previewRecommendation = getNearestPreviewRecommendationForGuests(guests);
+  const heroPreviewElement = getHeroPreviewElement();
+  const heroSnapshot = heroPreviewElement ? {
+    element: heroPreviewElement,
+    rect: heroPreviewElement.getBoundingClientRect()
+  } : null;
+
   showRecommendationsPageView();
 
   if (guestCountInput) {
     guestCountInput.value = guests;
   }
-
-
-  let cakeOptions = [
-  { name: '6" cake', servings: 10, type: 'round', size: 6 },
-  { name: '8" cake', servings: 18, type: 'round', size: 8 },
-  { name: '10" cake', servings: 32, type: 'round', size: 10 },
-  { name: '12" cake', servings: 47, type: 'round', size: 12 },
-  { name: '14" cake', servings: 70, type: 'round', size: 14 },
-
-  { name: '1/4 sheet cake', servings: 24, type: 'sheet' },
-  { name: '1/2 sheet cake', servings: 36, type: 'sheet' },
-  { name: 'full sheet cake', servings: 72, type: 'sheet' }
-];
-
-let tieredOptions = [
-  { tiers: [6, 8], servings: 28 },
-  { tiers: [8, 10], servings: 50 },
-  { tiers: [6, 8, 10], servings: 60 },
-  { tiers: [10, 12], servings: 79 },
-  { tiers: [8, 10, 12], servings: 97 },
-  { tiers: [6, 8, 10, 12], servings: 107 },
-  { tiers: [10, 12, 14], servings: 149 },
-  { tiers: [8, 10, 12, 14], servings: 167 },
-  { tiers: [6, 8, 10, 12, 14], servings: 177}
-];
 
 const flavorPrices = {
   "Vanilla": 0,
@@ -1716,6 +2439,35 @@ const signatureFlavors = {
     filling: "Vanilla Custard"
   }
 };
+
+const signatureFlavorOrder = [
+  "original-vanilla",
+  "blueberry-cheesecake",
+  "cinnamon-roll",
+  "london-fog",
+  "pancake",
+  "passionberry",
+  "strawberry-key-lime",
+  "strawberry-shortcake",
+  "white-chocolate-raspberry",
+  "original-chocolate",
+  "black-forrest",
+  "cookies-and-cream",
+  "mocha",
+  "raspberry-chocolate-mousse",
+  "red-velvet",
+  "tuxedo",
+  "zebra",
+  "almond-joy",
+  "coconut-cream",
+  "cranberry-orange",
+  "key-lime-coconut",
+  "lemon-blueberry",
+  "apple-cider",
+  "bee-sting",
+  "carrot",
+  "horchata"
+];
 
 const baseCakePrices = {
   '6" cake': 55,
@@ -2037,6 +2789,8 @@ function getSavedRecommendationMatch() {
 let visualsContainer = document.getElementById("cake-visuals");
 visualsContainer.innerHTML = "";
 
+renderHeroRecommendationCard(null, getBasePrice);
+
 let topVisuals = uniqueRecommendations.slice(0, 3);
 
 topVisuals.forEach((recommendation, index) => {
@@ -2047,15 +2801,17 @@ topVisuals.forEach((recommendation, index) => {
   label.classList.add("visual-label");
 
   label.innerHTML = `
-    <div class="recommendation-option-number">${index + 1}</div>
-    <div class="servings">Serves ${recommendation.servings}</div>
+    <div class="recommendation-servings-text">Serves ${recommendation.servings}</div>
     <div class="recommendation-price-text">${formatPrice(getBasePrice(recommendation))}</div>
+    <div class="recommendation-description-text">${formatRecommendationDisplayName(recommendation)}</div>
   `;
 
   card.appendChild(label);
 
   const preview3D = document.createElement("div");
 preview3D.classList.add("recommendation-cake-3d");
+preview3D.dataset.recommendationName = recommendation.name;
+preview3D.dataset.recommendationType = recommendation.type;
 
 
 
@@ -2076,6 +2832,14 @@ card.appendChild(preview3D);
 });
 
 persistRecommendationState();
+
+const animationTargetRecommendation = topVisuals.find((recommendation) => {
+  return isRecommendationMatch(recommendation, previewRecommendation);
+}) || topVisuals.find((recommendation) => recommendation.type === "tiered") || topVisuals[0] || null;
+
+requestAnimationFrame(() => {
+  animateHeroPreviewIntoRecommendation(heroSnapshot, animationTargetRecommendation);
+});
 
 const restoredRecommendation = getSavedRecommendationMatch();
 if ((isDevMode || restoredState?.view === "customizer" || restoredState?.view === "summary") && (restoredRecommendation || topVisuals[0])) {
@@ -2372,6 +3136,10 @@ const parts = getRecommendationParts(recommendation);
 const basePartCount = parts.length;
 
 const orderSections = document.getElementById("order-sections");
+let requiredDate = restoredCustomizerState?.requiredDate || "";
+let requiredTime = restoredCustomizerState?.requiredTime || "";
+let fulfillmentMethod = restoredCustomizerState?.fulfillmentMethod === "delivery" ? "delivery" : "pickup";
+let fulfillmentLocation = restoredCustomizerState?.fulfillmentLocation || "";
 
 let activeTierIndex = Number.isInteger(restoredCustomizerState?.activeTierIndex)
   ? restoredCustomizerState.activeTierIndex
@@ -2420,6 +3188,10 @@ customizerPreviewSelections = selections;
 function persistCustomizerState(view = "customizer") {
   setSavedAppState(getRecommendationStatePayload(recommendation, {
     activeTierIndex,
+    requiredDate,
+    requiredTime,
+    fulfillmentMethod,
+    fulfillmentLocation,
     selections: selections.map((selection) => ({
       label: selection.label,
       size: selection.size,
@@ -2487,16 +3259,22 @@ function renderOrderSummaryPage() {
 
   const summarySelections = selections.map((selection) => ({ ...selection }));
   const now = new Date();
+  const requiredDateValue = requiredDate ? new Date(`${requiredDate}T12:00:00`) : now;
   const promiseDate = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
     year: "numeric"
-  }).format(now);
-  const promiseTime = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(now);
+  }).format(requiredDateValue);
+  const promiseTime = requiredTime
+    ? new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        minute: "2-digit"
+      }).format(new Date(`2000-01-01T${requiredTime}`))
+    : new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        minute: "2-digit"
+      }).format(now);
   const orderedDate = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
@@ -2518,6 +3296,11 @@ function renderOrderSummaryPage() {
   const taxRate = 0.0725;
   const tax = subtotal * taxRate;
   const total = subtotal + tax;
+  const fulfillmentLabel = fulfillmentMethod === "delivery" ? "Delivery" : "Pickup";
+  const fulfillmentWindowLabel = fulfillmentMethod === "delivery" ? "Delivery window" : "Pickup window";
+  const fulfillmentLocationText = fulfillmentMethod === "delivery" && fulfillmentLocation
+    ? fulfillmentLocation
+    : "Road St.";
 
   customizer.innerHTML = `
     <div class="summary-page">
@@ -2538,13 +3321,13 @@ function renderOrderSummaryPage() {
               <div class="summary-customer-name">Customer Name</div>
               <div class="summary-customer-phone">(000-000-0000)</div>
               <div class="summary-customer-order">Order #000X</div>
-              <div class="summary-customer-window">Delivery window: XX:XX</div>
+              <div class="summary-customer-window">${fulfillmentWindowLabel}: XX:XX</div>
             </div>
           </div>
 
           <div class="summary-sheet-meta">
             <div class="summary-sheet-promise">${promiseDate} @ ${promiseTime}</div>
-            <div class="summary-sheet-status">Pickup</div>
+            <div class="summary-sheet-status">${fulfillmentLabel}</div>
             <div class="summary-sheet-submeta">Date Ordered: ${orderedDate}</div>
             <div class="summary-sheet-submeta">Taken By: Cakesupply</div>
             <div class="summary-sheet-submeta">Status: Open, Unpaid</div>
@@ -2555,7 +3338,7 @@ function renderOrderSummaryPage() {
           <div class="summary-sheet-contact-left"></div>
           <div class="summary-sheet-contact-right">
             <div>Customer name</div>
-            <div>Road St.</div>
+            <div>${fulfillmentLocationText}</div>
             <div>City, State, Zip</div>
             <div>(000-000-0000)</div>
           </div>
@@ -2624,9 +3407,244 @@ function renderOrderSummaryPage() {
     button.addEventListener("click", () => {
       showCustomizer(recommendation, {
         activeTierIndex,
+        requiredDate,
+        requiredTime,
+        fulfillmentMethod,
+        fulfillmentLocation,
         selections
       });
     });
+  });
+}
+
+function renderRequiredDateOverlay() {
+  const existingOverlay = document.getElementById("required-date-overlay");
+  if (existingOverlay) {
+    existingOverlay.remove();
+  }
+
+  const overlay = document.createElement("div");
+  overlay.id = "required-date-overlay";
+  overlay.className = "fulfillment-overlay";
+  overlay.innerHTML = `
+    <div class="fulfillment-dialog required-date-dialog" role="dialog" aria-modal="true" aria-labelledby="required-date-title">
+      <div class="fulfillment-dialog-inner">
+        <p id="required-date-title" class="fulfillment-title">Date required</p>
+        <div class="required-date-field">
+          <label class="fulfillment-date-label" for="required-date-input">Select date</label>
+          <input
+            type="date"
+            id="required-date-input"
+            class="fulfillment-date-input"
+            value="${requiredDate}"
+            min="${new Date().toISOString().split("T")[0]}">
+        </div>
+        <div class="fulfillment-actions">
+          <button type="button" class="fulfillment-secondary-btn">Cancel</button>
+          <button type="button" class="fulfillment-primary-btn">Continue</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  customizer.appendChild(overlay);
+
+  const dateInput = overlay.querySelector("#required-date-input");
+  const cancelButton = overlay.querySelector(".fulfillment-secondary-btn");
+  const continueButton = overlay.querySelector(".fulfillment-primary-btn");
+
+  dateInput?.addEventListener("change", () => {
+    requiredDate = dateInput.value || "";
+    persistCustomizerState();
+  });
+
+  cancelButton?.addEventListener("click", () => {
+    overlay.remove();
+  });
+
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      overlay.remove();
+    }
+  });
+
+  continueButton?.addEventListener("click", () => {
+    if (!dateInput?.value) {
+      dateInput?.focus();
+      dateInput?.showPicker?.();
+      return;
+    }
+
+    requiredDate = dateInput.value || "";
+    persistCustomizerState();
+    overlay.remove();
+    renderRequiredTimeOverlay();
+  });
+}
+
+function renderRequiredTimeOverlay() {
+  const existingOverlay = document.getElementById("required-time-overlay");
+  if (existingOverlay) {
+    existingOverlay.remove();
+  }
+
+  const overlay = document.createElement("div");
+  overlay.id = "required-time-overlay";
+  overlay.className = "fulfillment-overlay";
+  overlay.innerHTML = `
+    <div class="fulfillment-dialog required-time-dialog" role="dialog" aria-modal="true" aria-labelledby="required-time-title">
+      <div class="fulfillment-dialog-inner">
+        <p id="required-time-title" class="fulfillment-title">Time required</p>
+        <div class="required-date-field">
+          <label class="fulfillment-date-label" for="required-time-input">Select time</label>
+          <input
+            type="time"
+            id="required-time-input"
+            class="fulfillment-date-input"
+            value="${requiredTime}">
+        </div>
+        <div class="fulfillment-actions">
+          <button type="button" class="fulfillment-secondary-btn">Cancel</button>
+          <button type="button" class="fulfillment-primary-btn">Continue</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  customizer.appendChild(overlay);
+
+  const timeInput = overlay.querySelector("#required-time-input");
+  const cancelButton = overlay.querySelector(".fulfillment-secondary-btn");
+  const continueButton = overlay.querySelector(".fulfillment-primary-btn");
+
+  timeInput?.addEventListener("change", () => {
+    requiredTime = timeInput.value || "";
+    persistCustomizerState();
+  });
+
+  cancelButton?.addEventListener("click", () => {
+    overlay.remove();
+  });
+
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      overlay.remove();
+    }
+  });
+
+  continueButton?.addEventListener("click", () => {
+    if (!timeInput?.value) {
+      timeInput?.focus();
+      timeInput?.showPicker?.();
+      return;
+    }
+
+    requiredTime = timeInput.value || "";
+    persistCustomizerState();
+    overlay.remove();
+    renderOrderSummaryPage();
+  });
+}
+
+function renderFulfillmentOverlay() {
+  const existingOverlay = document.getElementById("fulfillment-overlay");
+  if (existingOverlay) {
+    existingOverlay.remove();
+  }
+
+  if (fulfillmentMethod !== "delivery") {
+    fulfillmentMethod = "pickup";
+  }
+
+  const overlay = document.createElement("div");
+  overlay.id = "fulfillment-overlay";
+  overlay.className = "fulfillment-overlay";
+  overlay.innerHTML = `
+    <div class="fulfillment-dialog" role="dialog" aria-modal="true" aria-labelledby="fulfillment-title">
+      <div class="fulfillment-dialog-inner">
+        <div class="fulfillment-body">
+          <div class="fulfillment-options" role="radiogroup" aria-label="Pickup or delivery">
+            <label class="fulfillment-option${fulfillmentMethod === "pickup" ? " is-selected" : ""}">
+              <input type="radio" name="fulfillment-method" value="pickup" ${fulfillmentMethod === "pickup" ? "checked" : ""}>
+              <span class="fulfillment-radio"></span>
+              <span class="fulfillment-option-label">Pickup</span>
+            </label>
+          <label class="fulfillment-option${fulfillmentMethod === "delivery" ? " is-selected" : ""}">
+            <input type="radio" name="fulfillment-method" value="delivery" ${fulfillmentMethod === "delivery" ? "checked" : ""}>
+            <span class="fulfillment-radio"></span>
+            <span class="fulfillment-option-label">Delivery</span>
+          </label>
+        </div>
+        <div class="fulfillment-date-field${fulfillmentMethod === "delivery" ? " is-visible" : ""}">
+            <label class="fulfillment-date-label" for="fulfillment-location">Delivery location</label>
+            <input type="text" id="fulfillment-location" class="fulfillment-date-input" value="${fulfillmentLocation}" placeholder="Enter address or location">
+          </div>
+        </div>
+        <div class="fulfillment-actions">
+          <button type="button" class="fulfillment-secondary-btn">Cancel</button>
+          <button type="button" class="fulfillment-primary-btn">Continue</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  customizer.appendChild(overlay);
+
+  const optionButtons = overlay.querySelectorAll(".fulfillment-option");
+  const optionInputs = overlay.querySelectorAll('input[name="fulfillment-method"]');
+  const dateField = overlay.querySelector(".fulfillment-date-field");
+  const locationInput = overlay.querySelector(".fulfillment-date-input");
+  const cancelButton = overlay.querySelector(".fulfillment-secondary-btn");
+  const continueButton = overlay.querySelector(".fulfillment-primary-btn");
+
+  const syncSelection = () => {
+    optionButtons.forEach((button) => {
+      const input = button.querySelector('input[name="fulfillment-method"]');
+      const isSelected = input?.value === fulfillmentMethod;
+      button.classList.toggle("is-selected", Boolean(isSelected));
+      if (input) {
+        input.checked = Boolean(isSelected);
+      }
+    });
+
+    if (dateField) {
+      dateField.classList.toggle("is-visible", fulfillmentMethod === "delivery");
+    }
+  };
+
+  optionInputs.forEach((input) => {
+    input.addEventListener("change", () => {
+      fulfillmentMethod = input.value === "delivery" ? "delivery" : "pickup";
+      syncSelection();
+      persistCustomizerState();
+    });
+  });
+
+  locationInput?.addEventListener("input", () => {
+    fulfillmentLocation = locationInput.value || "";
+    persistCustomizerState();
+  });
+
+  cancelButton?.addEventListener("click", () => {
+    overlay.remove();
+  });
+
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      overlay.remove();
+    }
+  });
+
+  continueButton?.addEventListener("click", () => {
+    if (fulfillmentMethod === "delivery" && !locationInput?.value.trim()) {
+      locationInput?.focus();
+      return;
+    }
+
+    fulfillmentLocation = locationInput?.value || "";
+    persistCustomizerState();
+    overlay.remove();
+    renderRequiredDateOverlay();
   });
 }
 
@@ -3043,7 +4061,7 @@ extraBackupSizeButtons.forEach((button) => {
 });
 
 orderSummaryBtn?.addEventListener("click", () => {
-  renderOrderSummaryPage();
+  renderFulfillmentOverlay();
 });
 
 tierFlavorSelect.addEventListener("change", function () {
@@ -3155,8 +4173,26 @@ function goBack() {
 }
 }
 
-calculateButton?.addEventListener("click", () => {
-  const guests = parseInt(guestCountInput?.value, 10);
+function updateLandingHeroPreviewFromInput() {
+  const guests = parseGuestCountValue(guestCountInput?.value ?? "");
+  const recommendation = getNearestTieredPreviewRecommendation(guests);
+
+  activeHeroRecommendation = recommendation;
+  pendingLandingHeroTierSizes = recommendation?.tiers || null;
+  syncLandingHeroPreviewMode(Boolean(recommendation));
+  setLandingHeroTierConfiguration(pendingLandingHeroTierSizes);
+}
+
+const debouncedLandingHeroPreviewUpdate = debounce(updateLandingHeroPreviewFromInput, LIVE_PREVIEW_DEBOUNCE_MS);
+
+guestCountInput?.addEventListener("input", () => {
+  debouncedLandingHeroPreviewUpdate();
+});
+
+calculatorForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  debouncedLandingHeroPreviewUpdate.cancel();
+  const guests = parseGuestCountValue(guestCountInput?.value ?? "");
   initializeCakeFlow(guests);
 });
 
@@ -3164,11 +4200,21 @@ recommendationsBackButton?.addEventListener("click", () => {
   returnToLandingPage();
 });
 
+menuTab?.addEventListener("click", () => {
+  openMenuPage();
+});
+
+siteLogo?.addEventListener("click", () => {
+  returnToLandingPage();
+});
+
 initLandingHero();
 
 const restoredState = getSavedAppState();
 
-if (restoredState?.guests && (isDevMode || (restoredState.view && restoredState.view !== "landing"))) {
+if (restoredState?.view === "menu") {
+  openMenuPage();
+} else if (restoredState?.guests && (isDevMode || (restoredState.view && restoredState.view !== "landing"))) {
   initializeCakeFlow(restoredState.guests, restoredState);
 } else if (isDevMode) {
   const fallbackGuests = Number.parseInt(guestCountInput?.value, 10) || 50;
