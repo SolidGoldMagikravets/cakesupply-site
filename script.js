@@ -69,21 +69,12 @@ const tieredOptions = [
 ];
 
 function getSavedAppState() {
-  try {
-    const raw = localStorage.getItem(APP_STATE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch (error) {
-    console.warn("Unable to read saved app state", error);
-    return null;
-  }
+  clearSavedAppState();
+  return null;
 }
 
 function setSavedAppState(state) {
-  try {
-    localStorage.setItem(APP_STATE_KEY, JSON.stringify(state));
-  } catch (error) {
-    console.warn("Unable to save app state", error);
-  }
+  void state;
 }
 
 function clearSavedAppState() {
@@ -3245,15 +3236,6 @@ requestAnimationFrame(() => {
   animateHeroPreviewIntoRecommendation(heroSnapshot, animationTargetRecommendation);
 });
 
-const restoredRecommendation = getSavedRecommendationMatch();
-if ((isDevMode || restoredState?.view === "customizer" || restoredState?.view === "summary") && (restoredRecommendation || topVisuals[0])) {
-  showCustomizer(
-    restoredRecommendation || topVisuals[0],
-    restoredState?.customizerState || null,
-    restoredState?.view === "summary"
-  );
-}
-
 function showCustomizer(recommendation, restoredCustomizerState = null, openSummaryOnLoad = false) {
   showCustomizerPageView();
   document.getElementById("customizer").style.display = "block";
@@ -4820,15 +4802,5 @@ siteLogo?.addEventListener("click", () => {
 
 initLandingHero();
 
-const restoredState = getSavedAppState();
-
-if (restoredState?.view === "menu") {
-  openMenuPage();
-} else if (restoredState?.view === "display-case") {
-  openDisplayCasePage();
-} else if (restoredState?.guests && (isDevMode || (restoredState.view && restoredState.view !== "landing"))) {
-  initializeCakeFlow(restoredState.guests, restoredState);
-} else if (isDevMode) {
-  const fallbackGuests = Number.parseInt(guestCountInput?.value, 10) || 50;
-  initializeCakeFlow(fallbackGuests);
-}
+clearSavedAppState();
+showLandingPageView();
