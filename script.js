@@ -13,10 +13,12 @@ const heroCustomizeButton = document.getElementById("hero-customize-btn");
 const landingPage = document.getElementById("landing-page");
 const menuPage = document.getElementById("menu-page");
 const menuGrid = document.getElementById("menu-grid");
+const displayCasePage = document.getElementById("display-case-page");
 const recommendationsPage = document.getElementById("recommendations-page");
 const recommendationsBackButton = document.getElementById("recommendations-back-btn");
 const siteLogo = document.getElementById("site-logo");
 const menuTab = document.getElementById("menu-tab");
+const displayCaseTab = document.getElementById("display-case-tab");
 const queryParams = new URLSearchParams(window.location.search);
 const isDevMode = queryParams.get("dev") === "1";
 const APP_STATE_KEY = "cake-supply-app-state";
@@ -32,6 +34,16 @@ const CAKE_LIGHTING = {
   rim: 1.1,
   ambient: 0.72
 };
+
+const OUTER_FROSTING_DECOR = "outerfrosting";
+const SHELL_BORDER_DECOR = "shell-border";
+const DEFAULT_OUTER_FROSTING_COLOR = "#fff7c7";
+const DEFAULT_SHELL_FROSTING_COLOR = "#fffdf4";
+const SHELL_BORDER_MODEL_SRC = "decoration/shell_single1.glb";
+const SHELL_BORDER_MIN_SCALE = 0.08;
+const SHELL_BORDER_MAX_COUNT = 32;
+const SHELL_BORDER_OVERLAP = 1.12;
+const SHELL_BORDER_DEFAULT_EDGE = "top";
 
 const cakeOptions = [
   { name: '6" cake', servings: 10, type: 'round', size: 6 },
@@ -89,9 +101,14 @@ function showLandingPageView() {
     menuPage.style.display = "none";
     menuPage.hidden = true;
   }
+  if (displayCasePage) {
+    displayCasePage.style.display = "none";
+    displayCasePage.hidden = true;
+  }
   if (recommendationsPage) recommendationsPage.style.display = "";
   document.body.classList.remove("results-active");
   document.body.classList.remove("menu-active");
+  document.body.classList.remove("display-case-active");
   document.body.classList.remove("customizer-active");
   document.body.classList.remove("results-transitioning");
   if (heroRecommendationMeta) {
@@ -108,9 +125,14 @@ function showRecommendationsPageView() {
     menuPage.style.display = "none";
     menuPage.hidden = true;
   }
+  if (displayCasePage) {
+    displayCasePage.style.display = "none";
+    displayCasePage.hidden = true;
+  }
   if (recommendationsPage) recommendationsPage.style.display = "";
   document.body.classList.add("results-active");
   document.body.classList.remove("menu-active");
+  document.body.classList.remove("display-case-active");
   document.body.classList.remove("customizer-active");
   if (heroRecommendationMeta) {
     heroRecommendationMeta.setAttribute("aria-hidden", "false");
@@ -129,6 +151,11 @@ function showCustomizerPageView() {
     menuPage.style.display = "none";
     menuPage.hidden = true;
   }
+  if (displayCasePage) {
+    displayCasePage.style.display = "none";
+    displayCasePage.hidden = true;
+  }
+  document.body.classList.remove("display-case-active");
   const customizerEl = document.getElementById("customizer");
   if (customizerEl) customizerEl.style.display = "block";
 }
@@ -139,11 +166,37 @@ function showMenuPageView() {
     menuPage.hidden = false;
     menuPage.style.display = "block";
   }
+  if (displayCasePage) {
+    displayCasePage.style.display = "none";
+    displayCasePage.hidden = true;
+  }
   if (recommendationsPage) recommendationsPage.style.display = "";
   document.body.classList.remove("results-active");
   document.body.classList.remove("customizer-active");
   document.body.classList.remove("results-transitioning");
+  document.body.classList.remove("display-case-active");
   document.body.classList.add("menu-active");
+  const customizerEl = document.getElementById("customizer");
+  if (customizerEl) customizerEl.style.display = "none";
+}
+
+function showDisplayCasePageView() {
+  teardownMenuPreviewObserver();
+  if (landingPage) landingPage.style.display = "none";
+  if (menuPage) {
+    menuPage.style.display = "none";
+    menuPage.hidden = true;
+  }
+  if (displayCasePage) {
+    displayCasePage.hidden = false;
+    displayCasePage.style.display = "block";
+  }
+  if (recommendationsPage) recommendationsPage.style.display = "";
+  document.body.classList.remove("results-active");
+  document.body.classList.remove("customizer-active");
+  document.body.classList.remove("menu-active");
+  document.body.classList.remove("results-transitioning");
+  document.body.classList.add("display-case-active");
   const customizerEl = document.getElementById("customizer");
   if (customizerEl) customizerEl.style.display = "none";
 }
@@ -170,7 +223,12 @@ function returnToLandingPage() {
       }, 460);
     });
   });
-  setSavedAppState(getRecommendationStatePayload(null, null, "landing"));
+  setSavedAppState({
+    guests: null,
+    view: "landing",
+    recommendation: null,
+    customizerState: null
+  });
 }
 
 function openMenuPage() {
@@ -178,6 +236,12 @@ function openMenuPage() {
   showMenuPageView();
   renderMenuPage();
   setSavedAppState({ view: "menu" });
+}
+
+function openDisplayCasePage() {
+  debouncedLandingHeroPreviewUpdate.cancel();
+  showDisplayCasePageView();
+  setSavedAppState({ view: "display-case" });
 }
 
 function isSameRecommendation(left, right) {
@@ -1182,6 +1246,7 @@ function applyTierColorsToObject(object, selection = {}) {
 
   object.traverse((child) => {
     if (!child.isMesh || !child.material) return;
+    if (child.userData?.isDecorMesh) return;
 
     const materials = Array.isArray(child.material) ? child.material : [child.material];
 
@@ -1734,7 +1799,9 @@ let customizerPreviewSelections = [];
 let activeCustomizerTierIndex = null;
 let visibleBackupTierIndex = null;
 let syncTierRowStates = () => {};
+let syncPeekToggleForIndex = () => {};
 let customizerKeyHandler = null;
+const shellBorderModelCache = new Map();
 
 function isBackupKind(kind) {
   return kind === "backup" || kind === "extra-backup";
@@ -1889,6 +1956,10 @@ async function buildCake3D(parts) {
       object: tier,
       partIndex,
       kind: part.kind,
+      size: part.size,
+      stackY: currentHeight,
+      tierHeight: height,
+      tierRadius: radius,
       baseScale: tier.scale.x,
       homeX: tier.position.x,
       currentX: tier.position.x,
@@ -1912,7 +1983,7 @@ async function buildCake3D(parts) {
     prepareTierMaterials(backupTier);
     applyTierColorsToObject(backupTier);
 
-    const { width: backupWidth } = normalizeCakeModelBounds(backupTier);
+    const { height: backupHeight, width: backupWidth } = normalizeCakeModelBounds(backupTier);
     const backupRadius = backupWidth / 2;
 
     const sideOffset = maxMainRadius + backupRadius + 0.08;
@@ -1923,6 +1994,10 @@ async function buildCake3D(parts) {
       object: backupTier,
       partIndex,
       kind: part.kind,
+      size: part.size,
+      stackY: 0,
+      tierHeight: backupHeight,
+      tierRadius: backupRadius,
       baseScale: backupTier.scale.x,
       homeX: sideOffset,
       currentX: sideOffset,
@@ -1967,7 +2042,7 @@ async function addExtraBackupCakeObject(selection, selectionIndex) {
   });
   prepareTierMaterials(backupTier);
   applyTierColorsToObject(backupTier, selection);
-  normalizeCakeModelBounds(backupTier);
+  const { height: backupHeight, width: normalizedBackupWidth } = normalizeCakeModelBounds(backupTier);
 
   const mainEntries = cakeObjects.filter((entry) => entry.kind === "main");
   const mainBox = new THREE.Box3();
@@ -1986,6 +2061,10 @@ async function addExtraBackupCakeObject(selection, selectionIndex) {
     object: backupTier,
     partIndex: selectionIndex,
     kind: "extra-backup",
+    size: selection.size,
+    stackY: 0,
+    tierHeight: backupHeight,
+    tierRadius: normalizedBackupWidth / 2,
     baseScale: backupTier.scale.x,
     homeX: sideOffset,
     centerX: 0,
@@ -2006,6 +2085,10 @@ function animate() {
 
     entry.currentX += (entry.targetX - entry.currentX) * 0.14;
     entry.object.position.x = entry.currentX;
+    if (entry.outerFrostingObject) {
+      const offset = entry.outerFrostingOffset || { x: 0 };
+      entry.outerFrostingObject.position.x = entry.currentX + offset.x;
+    }
   });
   renderer.render(scene, camera);
 }
@@ -2023,9 +2106,12 @@ function attachCakePicker() {
 
     raycaster.setFromCamera(pointer, camera);
 
-    const meshes = cakeObjects.flatMap(({ object }) => {
+    const meshes = cakeObjects.flatMap(({ object, outerFrostingObject }) => {
       const descendants = [];
       object.traverse((child) => {
+        if (child.isMesh) descendants.push(child);
+      });
+      outerFrostingObject?.traverse((child) => {
         if (child.isMesh) descendants.push(child);
       });
       return descendants;
@@ -2047,6 +2133,323 @@ function attachCakePicker() {
       customizerTierSelect(clickedObject.userData.partIndex);
     }
   });
+}
+
+function getOuterFrostingModelSrc(size) {
+  return size ? `decoration/outerfrosting_${size}.glb` : null;
+}
+
+async function loadShellBorderTemplate(src = SHELL_BORDER_MODEL_SRC, shellLoader = loader) {
+  if (shellBorderModelCache.has(src)) {
+    return shellBorderModelCache.get(src);
+  }
+
+  const loaderToUse = shellLoader || new GLTFLoader();
+  const modelPromise = new Promise((resolve, reject) => {
+    loaderToUse.load(src, (gltf) => resolve(gltf.scene), undefined, reject);
+  });
+
+  shellBorderModelCache.set(src, modelPromise);
+  return modelPromise;
+}
+
+async function loadShellModel(shellLoader = loader) {
+  return loadShellBorderTemplate(SHELL_BORDER_MODEL_SRC, shellLoader);
+}
+
+function applyShellBorderMaterial(object, color = DEFAULT_SHELL_FROSTING_COLOR) {
+  object.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+
+    const materials = Array.isArray(child.material)
+      ? child.material.map((material) => material.clone())
+      : [child.material.clone()];
+
+    child.castShadow = true;
+    child.receiveShadow = true;
+    child.userData.isDecorMesh = true;
+    child.material = Array.isArray(child.material) ? materials : materials[0];
+
+    materials.forEach((material) => {
+      material.userData = {
+        ...material.userData,
+        role: null
+      };
+      if (material.color) {
+        material.color.set(color);
+      }
+      material.roughness = 0.46;
+      material.metalness = 0;
+    });
+  });
+}
+
+async function createShellBorder(radius, y, count, options = {}) {
+  const {
+    src = SHELL_BORDER_MODEL_SRC,
+    scale = null,
+    overlap = SHELL_BORDER_OVERLAP,
+    radialOffset = 0,
+    rotationOffset = 0,
+    color = DEFAULT_SHELL_FROSTING_COLOR,
+    shellLoader = loader
+  } = options;
+
+  const template = await loadShellBorderTemplate(src, shellLoader);
+  const shellScale = scale ?? getShellScaleForCount(template, radius, count, overlap);
+  const border = new THREE.Group();
+  const up = new THREE.Vector3(0, 1, 0);
+
+  for (let i = 0; i < count; i += 1) {
+    const angle = (i / count) * Math.PI * 2;
+    const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+    const tangent = new THREE.Vector3(-Math.sin(angle), 0, Math.cos(angle));
+    const shell = template.clone(true);
+
+    shell.position.set(
+      outward.x * (radius + radialOffset),
+      y,
+      outward.z * (radius + radialOffset)
+    );
+
+    const rotationMatrix = new THREE.Matrix4().makeBasis(tangent, up, outward);
+    shell.setRotationFromMatrix(rotationMatrix);
+    shell.rotateY(rotationOffset);
+    shell.scale.set(shellScale * overlap, shellScale * 1.08, shellScale * 1.12);
+
+    applyShellBorderMaterial(shell, color);
+    border.add(shell);
+  }
+
+  border.userData.isShellBorder = true;
+  return border;
+}
+
+window.createShellBorder = createShellBorder;
+window.loadShellModel = loadShellModel;
+
+function getShellBaseFootprint(template) {
+  const box = new THREE.Box3().setFromObject(template);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+
+  return {
+    tangent: Math.max(size.x, 0.001),
+    radial: Math.max(size.z, 0.001)
+  };
+}
+
+function getShellCountForTier(entry, radius) {
+  const size = Number(entry?.size) || 8;
+  const sizeBasedCount = Math.round(size * 2.15);
+  const circumferenceCount = Math.round((Math.PI * 2 * radius) / 0.12);
+  return Math.max(14, Math.min(SHELL_BORDER_MAX_COUNT, Math.max(sizeBasedCount, circumferenceCount)));
+}
+
+function getShellScaleForCount(template, radius, count, overlap = SHELL_BORDER_OVERLAP) {
+  const footprint = getShellBaseFootprint(template);
+  const arcLength = (Math.PI * 2 * radius) / count;
+  const targetWidth = arcLength * overlap;
+
+  return Math.max(targetWidth / footprint.tangent, SHELL_BORDER_MIN_SCALE);
+}
+
+function getTierLocalEdgeY(entry, edge = SHELL_BORDER_DEFAULT_EDGE) {
+  entry.object.updateWorldMatrix(true, true);
+
+  const box = new THREE.Box3().setFromObject(entry.object);
+  const worldY = edge === "bottom" ? box.min.y : box.max.y;
+  const localPoint = entry.object.worldToLocal(new THREE.Vector3(0, worldY, 0));
+
+  return localPoint.y + (edge === "bottom" ? 0.018 : 0.006);
+}
+
+function resolveCakeEntryForTier(tier) {
+  if (!tier) return null;
+  if (cakeObjects.includes(tier)) return tier;
+  return cakeObjects.find((entry) => entry.object === tier || entry.partIndex === tier.userData?.partIndex) || null;
+}
+
+function ensureDecorGroup(entry) {
+  if (!entry) return null;
+
+  if (!entry.decorGroup) {
+    entry.decorGroup = new THREE.Group();
+    entry.decorGroup.name = `decorGroup-${entry.partIndex}`;
+    entry.decorGroup.userData.isDecorGroup = true;
+    entry.decorGroup.userData.partIndex = entry.partIndex;
+    entry.object.add(entry.decorGroup);
+  }
+
+  return entry.decorGroup;
+}
+
+function disposeDecorMaterialOnly(root) {
+  root?.traverse?.((child) => {
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.filter(Boolean).forEach((material) => material.dispose?.());
+  });
+}
+
+function clearDecorGroup(target) {
+  const entry = target?.isGroup ? null : resolveCakeEntryForTier(target);
+  const decorGroup = target?.isGroup ? target : entry?.decorGroup;
+  if (!decorGroup) return;
+
+  while (decorGroup.children.length) {
+    const child = decorGroup.children[0];
+    decorGroup.remove(child);
+    disposeDecorMaterialOnly(child);
+  }
+
+  if (entry) {
+    entry.decorType = "";
+  }
+}
+
+async function addShellBorderToTier(tier, edge = null) {
+  const entry = resolveCakeEntryForTier(tier);
+  if (!entry?.size) return null;
+
+  clearDecorGroup(entry);
+
+  const template = await loadShellModel();
+  const decorGroup = ensureDecorGroup(entry);
+  const radius = entry.tierRadius || 0.24;
+  const shellEdge = edge || customizerPreviewSelections[entry.partIndex]?.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE;
+  const y = getTierLocalEdgeY(entry, shellEdge);
+  const count = getShellCountForTier(entry, radius);
+  const scale = getShellScaleForCount(template, radius, count);
+  const up = new THREE.Vector3(0, 1, 0);
+
+  for (let i = 0; i < count; i += 1) {
+    const angle = (i / count) * Math.PI * 2;
+    const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+    const tangent = new THREE.Vector3(-Math.sin(angle), 0, Math.cos(angle));
+    const shell = template.clone(true);
+
+    shell.position.set(outward.x * radius, y, outward.z * radius);
+
+    const rotationMatrix = new THREE.Matrix4().makeBasis(tangent, up, outward);
+    shell.setRotationFromMatrix(rotationMatrix);
+    shell.scale.set(scale * SHELL_BORDER_OVERLAP, scale * 1.08, scale * 1.12);
+    shell.userData.isShellBorder = true;
+    shell.userData.partIndex = entry.partIndex;
+
+    applyShellBorderMaterial(shell);
+    decorGroup.add(shell);
+  }
+
+  entry.decorType = SHELL_BORDER_DECOR;
+  entry.shellBorderEdge = shellEdge;
+  return decorGroup;
+}
+
+async function syncDecorForIndex(index) {
+  const entry = cakeObjects.find((cakeObject) => cakeObject.partIndex === index);
+  const selection = customizerPreviewSelections[index];
+  if (!entry || !selection) return;
+
+  if (selection.decor === SHELL_BORDER_DECOR) {
+    await addShellBorderToTier(entry, selection.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE);
+    return;
+  }
+
+  clearDecorGroup(entry);
+}
+
+async function toggleShellBorder(index = activeCustomizerTierIndex) {
+  index = typeof index === "number" ? index : null;
+  if (index === null || !customizerPreviewSelections[index]?.size) return;
+
+  const selection = customizerPreviewSelections[index];
+  selection.shellBorderEdge = selection.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE;
+  selection.decor = selection.decor === SHELL_BORDER_DECOR ? "" : SHELL_BORDER_DECOR;
+  await syncDecorForIndex(index);
+}
+
+window.clearDecorGroup = clearDecorGroup;
+window.addShellBorderToTier = addShellBorderToTier;
+window.toggleShellBorder = toggleShellBorder;
+
+function applyOuterFrostingColor(object, color = DEFAULT_OUTER_FROSTING_COLOR) {
+  if (!object) return;
+
+  object.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      if (material.color) {
+        material.color.set(color);
+      }
+      material.roughness = 0.38;
+      material.metalness = 0;
+    });
+  });
+}
+
+function removeOuterFrostingForEntry(entry) {
+  if (!entry?.outerFrostingObject) return;
+
+  cakeSceneRoot?.remove(entry.outerFrostingObject);
+  disposeMenuPreviewObject(entry.outerFrostingObject);
+  entry.outerFrostingObject = null;
+  entry.outerFrostingType = "";
+  entry.outerFrostingOffset = null;
+  entry.peeking = false;
+}
+
+function positionOuterFrostingForEntry(entry) {
+  if (!entry?.outerFrostingObject) return;
+
+  const offset = entry.outerFrostingOffset || { x: 0, y: 0, z: 0 };
+  entry.outerFrostingObject.position.set(
+    (entry.currentX ?? entry.homeX ?? 0) + offset.x,
+    (entry.stackY ?? 0) + offset.y,
+    offset.z
+  );
+}
+
+async function syncOuterFrostingForIndex(index) {
+  const entry = cakeObjects.find((cakeObject) => cakeObject.partIndex === index);
+  const selection = customizerPreviewSelections[index];
+  if (!entry || !selection) return;
+
+  const shouldShowOuterFrosting = selection.outerFrosting === OUTER_FROSTING_DECOR && entry.size;
+  if (!shouldShowOuterFrosting) {
+    entry.peeking = false;
+    removeOuterFrostingForEntry(entry);
+    syncPeekToggleForIndex(index);
+    return;
+  }
+
+  if (!entry.outerFrostingObject) {
+    const src = getOuterFrostingModelSrc(entry.size);
+    if (!src || !loader || !cakeSceneRoot) return;
+
+    const gltf = await new Promise((resolve, reject) => {
+      loader.load(src, resolve, undefined, reject);
+    });
+
+    const outerFrosting = gltf.scene;
+    prepareTierMaterials(outerFrosting);
+    normalizeCakeModelBounds(outerFrosting);
+    entry.outerFrostingOffset = outerFrosting.position.clone();
+    outerFrosting.traverse((child) => {
+      child.userData.partIndex = index;
+    });
+
+    positionOuterFrostingForEntry(entry);
+    cakeSceneRoot.add(outerFrosting);
+    entry.outerFrostingObject = outerFrosting;
+    entry.outerFrostingType = OUTER_FROSTING_DECOR;
+  }
+
+  positionOuterFrostingForEntry(entry);
+  applyOuterFrostingColor(entry.outerFrostingObject, selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR);
+  entry.outerFrostingObject.visible = !entry.peeking;
+  syncPeekToggleForIndex(index);
 }
 
 function setActiveCakeTier(partIndex) {
@@ -2079,6 +2482,7 @@ function setActiveCakeTier(partIndex) {
     }
 
     applyTierColorsToObject(object, selection);
+    applyOuterFrostingColor(entry.outerFrostingObject, selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR);
 
     object.scale.setScalar(entry.baseScale ?? 1);
 
@@ -2882,14 +3286,16 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
 
     <div id="customizer-right">
   <div class="customizer-panel" id="flavor-panel">
-    <button id="flavor-toggle" type="button" class="flavor-toggle" aria-expanded="true">
+  <div class="accordion-section flavor-accordion-section expanded" data-accordion-section="flavor">
+    <button id="flavor-toggle" type="button" class="flavor-toggle accordion-header" aria-expanded="true">
       <span>Flavor</span>
     </button>
 
-    <div class="flavor-controls">
-    <label for="signature-flavor">Signature Flavor</label>
-<select id="signature-flavor">
-  <option value="">Select signature flavor</option>
+    <div class="flavor-controls accordion-content">
+      <div class="flavor-card">
+        <label class="flavor-field-label" for="signature-flavor">Signature Flavor</label>
+<select id="signature-flavor" class="flavor-select signature-flavor-select">
+  <option value="">Signature Flavor</option>
 
   <optgroup label="Vanilla-Base">
   <option value="original-vanilla">Original Vanilla</option>
@@ -2930,11 +3336,15 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
 </optgroup>
 </select>
 
-    <p class="or-divider">OR</p>
+    <div class="build-your-own-divider" aria-hidden="true">
+      <span></span>
+      <p>or build your own</p>
+      <span></span>
+    </div>
 
-    <label for="tier-flavor">Choose Cake</label>
-    <select id="tier-flavor">
-      <option value="">Select cake</option>
+    <label class="flavor-field-label" for="tier-flavor">Cake</label>
+    <select id="tier-flavor" class="flavor-select">
+      <option value="">Cake</option>
       <option>Almond</option>
       <option>Chocolate</option>
       <option>Coconut</option>
@@ -2944,9 +3354,9 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
       <option>Vanilla</option>
     </select>
 
-    <label for="tier-frosting">Choose Frosting</label>
-    <select id="tier-frosting">
-  <option value="">Select frosting</option>
+    <label class="flavor-field-label" for="tier-frosting">Frosting</label>
+    <select id="tier-frosting" class="flavor-select">
+  <option value="">Frosting</option>
   <option>Chocolate Buttercream</option>
   <option>Chocolate Mousse</option>
   <option>Cinnamon Honey Buttercream</option>
@@ -2963,9 +3373,9 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
   <option>White Chocolate Ganache</option>
 </select>
 
-    <label for="filling">Choose Filling</label>
-<select id="filling">
-  <option value="">Select filling</option>
+    <label class="flavor-field-label" for="filling">Filling</label>
+<select id="filling" class="flavor-select">
+  <option value="">Filling</option>
   <option>Apple Pie Filling</option>
   <option>Blackberry Puree</option>
   <option>Blueberry Puree</option>
@@ -2982,31 +3392,46 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
   <option>Vanilla Custard</option>
   <option>White Chocolate Ganache</option>
 </select>
+      </div>
     </div>
 
-  <div id="decor-drawer" class="decor-drawer">
-    <button id="decor-toggle" type="button" class="decor-toggle">Decor</button>
-    <div id="decor-content" class="decor-content">
+  </div>
+
+  <div id="decor-drawer" class="decor-drawer accordion-section" data-accordion-section="decor">
+    <button id="decor-toggle" type="button" class="decor-toggle accordion-header" aria-expanded="false">Decor</button>
+    <div id="decor-content" class="decor-content accordion-content">
       <div class="decor-shell">
         <div class="decor-stage">
-          <div class="decor-option-buttons">
-            <button type="button" class="decor-option-btn" data-decor="none">None</button>
-            <button type="button" class="decor-option-btn" data-decor="pearls">Pearls</button>
-            <button type="button" class="decor-option-btn" data-decor="ruffles">Ruffles</button>
-            <button type="button" class="decor-option-btn" data-decor="bows">Bows</button>
-            <button type="button" class="decor-option-btn" data-decor="flowers">Flowers</button>
-            <button type="button" class="decor-option-btn" data-decor="fruit">Fruit</button>
-            <button type="button" class="decor-option-btn" data-decor="writing">Writing</button>
-            <button type="button" class="decor-option-btn" data-decor="minimal">Minimal</button>
+            <div class="decor-option-buttons">
+            <label class="decor-field-label" for="outer-frosting-select">Outer frosting</label>
+            <select id="outer-frosting-select" class="decor-select">
+              <option value="">No outer layer</option>
+              <option value="${OUTER_FROSTING_DECOR}">Smooth outer layer</option>
+            </select>
+            <div class="decor-color-row" aria-label="Outer frosting color">
+              <button type="button" class="decor-color-swatch is-selected" data-decor-color="#fff7c7" style="--swatch-color: #fff7c7;" aria-label="Vanilla outer frosting"></button>
+              <button type="button" class="decor-color-swatch" data-decor-color="#f8c7d0" style="--swatch-color: #f8c7d0;" aria-label="Pink outer frosting"></button>
+              <button type="button" class="decor-color-swatch" data-decor-color="#b9c7f2" style="--swatch-color: #b9c7f2;" aria-label="Blue outer frosting"></button>
+              <button type="button" class="decor-color-swatch" data-decor-color="#c9dfbd" style="--swatch-color: #c9dfbd;" aria-label="Green outer frosting"></button>
+              <button type="button" class="decor-color-swatch" data-decor-color="#8b6659" style="--swatch-color: #8b6659;" aria-label="Chocolate outer frosting"></button>
+              <label class="decor-custom-color-label" for="outer-frosting-color">Custom</label>
+              <input id="outer-frosting-color" class="decor-color-input" type="color" value="${DEFAULT_OUTER_FROSTING_COLOR}" aria-label="Custom outer frosting color">
+            </div>
+            <label class="decor-field-label" for="shell-border-btn">Decorations</label>
+            <button id="shell-border-btn" type="button" class="decor-option-btn" data-decor="${SHELL_BORDER_DECOR}" aria-pressed="false">Shell Border</button>
+            <div class="shell-border-edge-controls" role="group" aria-label="Shell border edge">
+              <button type="button" class="shell-border-edge-btn is-selected" data-shell-edge="top" aria-pressed="true">Top edge</button>
+              <button type="button" class="shell-border-edge-btn" data-shell-edge="bottom" aria-pressed="false">Bottom edge</button>
+            </div>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div id="extra-backup-drawer" class="extra-backup-drawer">
-    <button id="extra-backup-toggle" type="button" class="extra-backup-toggle">Not Enough Cake?</button>
-    <div id="extra-backup-content" class="extra-backup-content">
+  <div id="extra-backup-drawer" class="extra-backup-drawer accordion-section" data-accordion-section="backup">
+    <button id="extra-backup-toggle" type="button" class="extra-backup-toggle accordion-header" aria-expanded="false">Not Enough Cake?</button>
+    <div id="extra-backup-content" class="extra-backup-content accordion-content">
       <div class="extra-backup-shell">
         <div class="extra-backup-stage">
           <div class="extra-backup-size-list">
@@ -3152,6 +3577,10 @@ const flavorToggle = document.getElementById("flavor-toggle");
 const decorToggle = document.getElementById("decor-toggle");
 const decorContent = document.getElementById("decor-content");
 const decorOptionButtons = document.querySelectorAll(".decor-option-btn");
+const outerFrostingSelect = document.getElementById("outer-frosting-select");
+const outerFrostingColorInput = document.getElementById("outer-frosting-color");
+const decorColorSwatches = document.querySelectorAll(".decor-color-swatch");
+const shellBorderEdgeButtons = document.querySelectorAll(".shell-border-edge-btn");
 const extraBackupToggle = document.getElementById("extra-backup-toggle");
 const extraBackupContent = document.getElementById("extra-backup-content");
 const extraBackupSizeButtons = document.querySelectorAll(".extra-backup-size-btn");
@@ -3170,7 +3599,10 @@ const selections = Array.isArray(restoredCustomizerState?.selections) && restore
       frosting: selection.frosting || "",
       filling: selection.filling || "",
       signature: selection.signature || "",
-      decor: selection.decor || ""
+      decor: selection.decor || "",
+      shellBorderEdge: selection.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE,
+      outerFrosting: selection.outerFrosting || "",
+      outerFrostingColor: selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR
     }))
   : parts.map(part => ({
       label: part.label,
@@ -3180,7 +3612,10 @@ const selections = Array.isArray(restoredCustomizerState?.selections) && restore
       frosting: "",
       filling: "",
       signature: "",
-      decor: ""
+      decor: "",
+      shellBorderEdge: SHELL_BORDER_DEFAULT_EDGE,
+      outerFrosting: "",
+      outerFrostingColor: DEFAULT_OUTER_FROSTING_COLOR
     }));
 
 customizerPreviewSelections = selections;
@@ -3200,7 +3635,10 @@ function persistCustomizerState(view = "customizer") {
       frosting: selection.frosting || "",
       filling: selection.filling || "",
       signature: selection.signature || "",
-      decor: selection.decor || ""
+      decor: selection.decor || "",
+      shellBorderEdge: selection.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE,
+      outerFrosting: selection.outerFrosting || "",
+      outerFrostingColor: selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR
     }))
   }, view));
 }
@@ -3362,6 +3800,7 @@ function renderOrderSummaryPage() {
               if (selection.flavor) detailRows.push(`<div class="summary-detail-row"><span>Flavor: ${selection.flavor}${extras.flavor > 0 ? ` (${formatMoney(extras.flavor)})` : ""}</span><span>${extras.flavor > 0 ? formatMoney(extras.flavor) : ""}</span></div>`);
               if (selection.filling) detailRows.push(`<div class="summary-detail-row"><span>Filling: ${selection.filling}${extras.filling > 0 ? ` (${formatMoney(extras.filling)})` : ""}</span><span>${extras.filling > 0 ? formatMoney(extras.filling) : ""}</span></div>`);
               if (selection.frosting) detailRows.push(`<div class="summary-detail-row"><span>Icing: ${selection.frosting}</span><span>${extras.frosting > 0 ? formatMoney(extras.frosting) : ""}</span></div>`);
+              if (selection.outerFrosting) detailRows.push(`<div class="summary-detail-row"><span>Outer frosting layer</span><span></span></div>`);
               if (selection.decor) detailRows.push(`<div class="summary-detail-row"><span>Decoration: ${selection.decor.charAt(0).toUpperCase() + selection.decor.slice(1)}</span><span></span></div>`);
 
               return `
@@ -3660,6 +4099,57 @@ function getTierValueEl(index, field) {
   return getTierRow(index)?.querySelector(`[data-field="${field}"]`) || null;
 }
 
+function getCakeEntryByIndex(index) {
+  return cakeObjects.find((entry) => entry.partIndex === index) || null;
+}
+
+function shouldShowPeekToggle(index) {
+  const selection = selections[index];
+  return Boolean(selection?.size && selection.outerFrosting === OUTER_FROSTING_DECOR);
+}
+
+syncPeekToggleForIndex = function (index) {
+  const row = getTierRow(index);
+  const button = row?.querySelector(".peek-toggle");
+  if (!button) return;
+
+  const entry = getCakeEntryByIndex(index);
+  const isVisible = shouldShowPeekToggle(index);
+  const isPeeking = Boolean(entry?.peeking);
+
+  button.hidden = !isVisible;
+  button.classList.toggle("is-peeking", isPeeking);
+  button.setAttribute("aria-pressed", isPeeking ? "true" : "false");
+  button.setAttribute("aria-label", isPeeking ? "Restore outer frosting" : "Peek inside tier");
+  row?.classList.toggle("is-peeking", isPeeking);
+};
+
+function syncPeekToggles() {
+  selections.forEach((_, index) => syncPeekToggleForIndex(index));
+}
+
+function setTierPeeking(index, isPeeking) {
+  const entry = getCakeEntryByIndex(index);
+  if (!entry) return;
+
+  entry.peeking = Boolean(isPeeking);
+  if (entry.outerFrostingObject) {
+    entry.outerFrostingObject.visible = !entry.peeking;
+  }
+  if (entry.decorGroup) {
+    entry.decorGroup.visible = !entry.peeking;
+  }
+
+  syncPeekToggleForIndex(index);
+}
+
+function toggleTierPeeking(index) {
+  const entry = getCakeEntryByIndex(index);
+  if (!entry || !shouldShowPeekToggle(index)) return;
+
+  setTierPeeking(index, !entry.peeking);
+}
+
 function scrollTierRowIntoView(index) {
   if (index === null) return;
 
@@ -3674,38 +4164,64 @@ function scrollTierRowIntoView(index) {
 }
 
 function closeDrawerMenus() {
-  const flavorPanel = document.getElementById("flavor-panel");
-  decorToggle.classList.remove("is-open");
-  extraBackupToggle.classList.remove("is-open");
-  flavorPanel?.classList.remove("decor-drawer-open", "backup-drawer-open", "has-open-drawer");
+  setAccordionSection("flavor");
 }
 
 function setFlavorCardExpanded(isExpanded) {
-  const flavorPanel = document.getElementById("flavor-panel");
-  if (!flavorPanel || !flavorToggle) return;
-
-  flavorPanel.classList.toggle("flavor-collapsed", !isExpanded);
-  flavorToggle.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+  setAccordionSection(isExpanded ? "flavor" : null);
 }
 
-function setDrawerState(drawerName, isOpen) {
+function setAccordionSection(sectionName = "flavor") {
   const flavorPanel = document.getElementById("flavor-panel");
   if (!flavorPanel) return;
 
-  const openDecor = drawerName === "decor" ? isOpen : false;
-  const openBackup = drawerName === "backup" ? isOpen : false;
+  const activeSection = sectionName || null;
 
-  decorToggle.classList.toggle("is-open", openDecor);
-  extraBackupToggle.classList.toggle("is-open", openBackup);
-  flavorPanel.classList.toggle("decor-drawer-open", openDecor);
-  flavorPanel.classList.toggle("backup-drawer-open", openBackup);
-  flavorPanel.classList.toggle("has-open-drawer", openDecor || openBackup);
+  flavorPanel.querySelectorAll(".accordion-section").forEach((section) => {
+    const isExpanded = section.dataset.accordionSection === activeSection;
+    section.classList.toggle("expanded", isExpanded);
+    section.querySelector(".accordion-header")?.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+  });
+
+  flavorPanel.dataset.activeAccordion = activeSection || "";
+}
+
+function getDecorTargetIndex() {
+  if (activeTierIndex !== null) return activeTierIndex;
+  return selections.length ? 0 : null;
 }
 
 function syncDecorButtons(index) {
   decorOptionButtons.forEach((button) => {
     const isSelected = index !== null && selections[index]?.decor === button.dataset.decor;
     button.classList.toggle("is-selected", !!isSelected);
+    button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+    button.disabled = !selections[index]?.size;
+  });
+
+  const selection = index !== null ? selections[index] : null;
+  if (outerFrostingSelect) {
+    outerFrostingSelect.value = selection?.outerFrosting || "";
+    outerFrostingSelect.disabled = !selection?.size;
+  }
+
+  const color = selection?.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR;
+  if (outerFrostingColorInput) {
+    outerFrostingColorInput.value = color;
+    outerFrostingColorInput.disabled = !selection?.size;
+  }
+
+  decorColorSwatches.forEach((button) => {
+    button.classList.toggle("is-selected", button.dataset.decorColor?.toLowerCase() === color.toLowerCase());
+    button.disabled = !selection?.size;
+  });
+
+  const shellEdge = selection?.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE;
+  shellBorderEdgeButtons.forEach((button) => {
+    const isSelected = button.dataset.shellEdge === shellEdge;
+    button.classList.toggle("is-selected", isSelected);
+    button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+    button.disabled = !selection?.size;
   });
 }
 
@@ -3725,6 +4241,8 @@ function removeExtraBackupCake(selectionIndex) {
   const objectIndex = cakeObjects.findIndex((entry) => entry.partIndex === selectionIndex);
   if (objectIndex !== -1) {
     const [entry] = cakeObjects.splice(objectIndex, 1);
+    clearDecorGroup(entry);
+    removeOuterFrostingForEntry(entry);
     cakeSceneRoot?.remove(entry.object);
   }
 
@@ -3733,7 +4251,11 @@ function removeExtraBackupCake(selectionIndex) {
   cakeObjects.forEach((entry) => {
     if (entry.partIndex > selectionIndex) {
       entry.partIndex -= 1;
+      entry.decorGroup?.userData && (entry.decorGroup.userData.partIndex = entry.partIndex);
       entry.object.traverse((child) => {
+        child.userData.partIndex = entry.partIndex;
+      });
+      entry.decorGroup?.traverse((child) => {
         child.userData.partIndex = entry.partIndex;
       });
     }
@@ -3784,6 +4306,14 @@ function attachTierRowHandlers() {
     };
   });
 
+  orderSections.querySelectorAll(".peek-toggle").forEach((button) => {
+    button.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleTierPeeking(Number(button.dataset.index));
+    };
+  });
+
   orderSections.querySelectorAll(".tier-remove-btn").forEach((button) => {
     button.onclick = (event) => {
       event.preventDefault();
@@ -3821,8 +4351,20 @@ function renderOrderRows() {
     tierRow.dataset.index = index;
     tierRow.dataset.kind = selection.kind;
     if (selection.size) tierRow.dataset.size = selection.size;
+    const showPeekToggle = shouldShowPeekToggle(index);
 
     tierRow.innerHTML = `
+      <div class="tier-row-actions">
+        <button type="button" class="peek-toggle" data-index="${index}" aria-pressed="false" aria-label="Peek inside tier" ${showPeekToggle ? "" : "hidden"}>
+          <svg class="peek-icon peek-icon-open" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path class="peek-eye-shape" d="M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12Z"></path>
+            <circle class="peek-eye-pupil-cutout" cx="12" cy="12" r="3"></circle>
+          </svg>
+          <svg class="peek-icon peek-icon-closed" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 13.5c1.6 2 3.5 3 6 3s4.4-1 6-3"></path>
+          </svg>
+        </button>
+      </div>
       <p><strong><span class="tier-title">${selection.label}</span></strong></p>
       <div class="tier-details">
         <p>Cake: <span data-field="flavor">-</span></p>
@@ -3839,7 +4381,7 @@ function renderOrderRows() {
       removeButton.dataset.index = index;
       removeButton.setAttribute("aria-label", "Remove backup cake");
       removeButton.textContent = "x";
-      tierRow.appendChild(removeButton);
+      tierRow.querySelector(".tier-row-actions")?.appendChild(removeButton);
     }
 
     if (selection.kind === "backup" || selection.kind === "extra-backup") {
@@ -3855,6 +4397,7 @@ function renderOrderRows() {
   });
 
   attachTierRowHandlers();
+  syncPeekToggles();
 
   if (activeTierIndex !== null && getTierRow(activeTierIndex)) {
     getTierRow(activeTierIndex).classList.add("active-tier-row");
@@ -3905,6 +4448,8 @@ function refreshTierPreview(index) {
   if (!tierObject) return;
 
   applyTierColorsToObject(tierObject.object, selections[index]);
+  void syncOuterFrostingForIndex(index);
+  void syncDecorForIndex(index);
 }
 
 function selectTier(index) {
@@ -3928,6 +4473,7 @@ function selectTier(index) {
   fillingSelect.value = selections[index].filling || "";
   signatureSelect.value = selections[index].signature || "";
   syncDecorButtons(index);
+  syncPeekToggles();
   persistCustomizerState();
 }
 
@@ -3981,6 +4527,9 @@ setTimeout(async () => {
     }
   }
 
+  await Promise.all(selections.map((_, index) => syncOuterFrostingForIndex(index)));
+  await Promise.all(selections.map((_, index) => syncDecorForIndex(index)));
+
   if (restoredTierIndex !== null) {
     selectTier(restoredTierIndex);
   } else {
@@ -3996,39 +4545,92 @@ setTimeout(async () => {
 }, 0);
 
 decorToggle.addEventListener("click", () => {
-  const flavorPanel = document.getElementById("flavor-panel");
-  const isOpen = flavorPanel?.classList.contains("decor-drawer-open");
-  setDrawerState("decor", !isOpen);
+  setAccordionSection("decor");
 });
 
 flavorToggle.addEventListener("click", () => {
-  const flavorPanel = document.getElementById("flavor-panel");
-  const isCollapsed = flavorPanel?.classList.contains("flavor-collapsed");
-
-  if (isCollapsed) {
-    setFlavorCardExpanded(true);
-    closeDrawerMenus();
-    return;
-  }
-
-  closeDrawerMenus();
-  setFlavorCardExpanded(false);
+  setAccordionSection("flavor");
 });
 
 decorOptionButtons.forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
     if (activeTierIndex === null) return;
-    selections[activeTierIndex].decor = button.dataset.decor || "";
+
+    if (button.dataset.decor === SHELL_BORDER_DECOR) {
+      await toggleShellBorder(activeTierIndex);
+    } else {
+      selections[activeTierIndex].decor = button.dataset.decor || "";
+      await syncDecorForIndex(activeTierIndex);
+    }
+
     syncDecorButtons(activeTierIndex);
-    closeDrawerMenus();
     persistCustomizerState();
   });
 });
 
+shellBorderEdgeButtons.forEach((button) => {
+  button.addEventListener("click", async () => {
+    if (activeTierIndex === null || !selections[activeTierIndex]?.size) return;
+
+    selections[activeTierIndex].shellBorderEdge = button.dataset.shellEdge || SHELL_BORDER_DEFAULT_EDGE;
+    if (selections[activeTierIndex].decor !== SHELL_BORDER_DECOR) {
+      selections[activeTierIndex].decor = SHELL_BORDER_DECOR;
+    }
+
+    await syncDecorForIndex(activeTierIndex);
+    syncDecorButtons(activeTierIndex);
+    persistCustomizerState();
+  });
+});
+
+outerFrostingSelect?.addEventListener("change", () => {
+  const targetIndex = getDecorTargetIndex();
+  if (targetIndex === null) return;
+
+  selections[targetIndex].outerFrosting = outerFrostingSelect.value;
+  if (outerFrostingSelect.value && !selections[targetIndex].outerFrostingColor) {
+    selections[targetIndex].outerFrostingColor = DEFAULT_OUTER_FROSTING_COLOR;
+  }
+
+  syncDecorButtons(targetIndex);
+  void syncOuterFrostingForIndex(targetIndex);
+  void syncDecorForIndex(targetIndex);
+  syncPeekToggleForIndex(targetIndex);
+  persistCustomizerState();
+});
+
+decorColorSwatches.forEach((button) => {
+  button.addEventListener("click", () => {
+    const targetIndex = getDecorTargetIndex();
+    if (targetIndex === null) return;
+
+    selections[targetIndex].outerFrosting = OUTER_FROSTING_DECOR;
+    selections[targetIndex].outerFrostingColor = button.dataset.decorColor || DEFAULT_OUTER_FROSTING_COLOR;
+
+    syncDecorButtons(targetIndex);
+    void syncOuterFrostingForIndex(targetIndex);
+    void syncDecorForIndex(targetIndex);
+    syncPeekToggleForIndex(targetIndex);
+    persistCustomizerState();
+  });
+});
+
+outerFrostingColorInput?.addEventListener("input", () => {
+  const targetIndex = getDecorTargetIndex();
+  if (targetIndex === null) return;
+
+  selections[targetIndex].outerFrosting = OUTER_FROSTING_DECOR;
+  selections[targetIndex].outerFrostingColor = outerFrostingColorInput.value || DEFAULT_OUTER_FROSTING_COLOR;
+
+  syncDecorButtons(targetIndex);
+  void syncOuterFrostingForIndex(targetIndex);
+  void syncDecorForIndex(targetIndex);
+  syncPeekToggleForIndex(targetIndex);
+  persistCustomizerState();
+});
+
 extraBackupToggle.addEventListener("click", () => {
-  const flavorPanel = document.getElementById("flavor-panel");
-  const isOpen = flavorPanel?.classList.contains("backup-drawer-open");
-  setDrawerState("backup", !isOpen);
+  setAccordionSection("backup");
 });
 
 extraBackupSizeButtons.forEach((button) => {
@@ -4044,7 +4646,11 @@ extraBackupSizeButtons.forEach((button) => {
     flavor: "",
     frosting: "",
     filling: "",
-    signature: ""
+    signature: "",
+    decor: "",
+    shellBorderEdge: SHELL_BORDER_DEFAULT_EDGE,
+    outerFrosting: "",
+    outerFrostingColor: DEFAULT_OUTER_FROSTING_COLOR
   };
 
   selections.push(newSelection);
@@ -4055,7 +4661,7 @@ extraBackupSizeButtons.forEach((button) => {
   updatePrice();
   selectTier(newIndex);
 
-  closeDrawerMenus();
+  setAccordionSection("flavor");
   persistCustomizerState();
   });
 });
@@ -4204,6 +4810,10 @@ menuTab?.addEventListener("click", () => {
   openMenuPage();
 });
 
+displayCaseTab?.addEventListener("click", () => {
+  openDisplayCasePage();
+});
+
 siteLogo?.addEventListener("click", () => {
   returnToLandingPage();
 });
@@ -4214,6 +4824,8 @@ const restoredState = getSavedAppState();
 
 if (restoredState?.view === "menu") {
   openMenuPage();
+} else if (restoredState?.view === "display-case") {
+  openDisplayCasePage();
 } else if (restoredState?.guests && (isDevMode || (restoredState.view && restoredState.view !== "landing"))) {
   initializeCakeFlow(restoredState.guests, restoredState);
 } else if (isDevMode) {

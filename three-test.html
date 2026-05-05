@@ -180,6 +180,106 @@ function getHeight(object) {
 }
 
 const tierCache = {};
+let shellTemplate = null;
+
+function loadShellTemplate() {
+  return new Promise((resolve, reject) => {
+    if (shellTemplate) {
+      resolve(shellTemplate);
+      return;
+    }
+
+    loader.load("decoration/shell_single1.glb", (gltf) => {
+      shellTemplate = gltf.scene;
+      resolve(shellTemplate);
+    }, undefined, reject);
+  });
+}
+
+const DEFAULT_SHELL_FROSTING_COLOR = "#fffdf4";
+const SHELL_BORDER_MIN_SCALE = 0.08;
+const SHELL_BORDER_MAX_COUNT = 32;
+const SHELL_BORDER_OVERLAP = 1.12;
+
+function styleShell(model, color = DEFAULT_SHELL_FROSTING_COLOR) {
+  model.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+
+    const materials = Array.isArray(child.material)
+      ? child.material.map((material) => material.clone())
+      : [child.material.clone()];
+
+    child.material = Array.isArray(child.material) ? materials : materials[0];
+
+    materials.forEach((material) => {
+      if (material.color) material.color.set(color);
+      material.roughness = 0.46;
+      material.metalness = 0;
+    });
+  });
+}
+
+function getShellBaseFootprint(template) {
+  const box = new THREE.Box3().setFromObject(template);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+
+  return {
+    tangent: Math.max(size.x, 0.001)
+  };
+}
+
+function getShellCountForRadius(radius) {
+  const circumferenceCount = Math.round((Math.PI * 2 * radius) / 0.12);
+  return Math.max(14, Math.min(SHELL_BORDER_MAX_COUNT, circumferenceCount));
+}
+
+function getShellScaleForCount(template, radius, count, overlap = SHELL_BORDER_OVERLAP) {
+  const footprint = getShellBaseFootprint(template);
+  const arcLength = (Math.PI * 2 * radius) / count;
+  const targetWidth = arcLength * overlap;
+
+  return Math.max(targetWidth / footprint.tangent, SHELL_BORDER_MIN_SCALE);
+}
+
+async function createShellBorder(radius, y, count, options = {}) {
+  const {
+    scale = null,
+    overlap = SHELL_BORDER_OVERLAP,
+    radialOffset = 0,
+    rotationOffset = 0,
+    color = DEFAULT_SHELL_FROSTING_COLOR
+  } = options;
+
+  const template = await loadShellTemplate();
+  const shellScale = scale ?? getShellScaleForCount(template, radius, count, overlap);
+  const border = new THREE.Group();
+  const up = new THREE.Vector3(0, 1, 0);
+
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2;
+    const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+    const tangent = new THREE.Vector3(-Math.sin(angle), 0, Math.cos(angle));
+    const shell = template.clone(true);
+
+    shell.position.set(
+      outward.x * (radius + radialOffset),
+      y,
+      outward.z * (radius + radialOffset)
+    );
+
+    const rotationMatrix = new THREE.Matrix4().makeBasis(tangent, up, outward);
+    shell.setRotationFromMatrix(rotationMatrix);
+    shell.rotateY(rotationOffset);
+    shell.scale.set(shellScale * overlap, shellScale * 1.08, shellScale * 1.12);
+
+    styleShell(shell, color);
+    border.add(shell);
+  }
+
+  border.userData.isShellBorder = true;
+  return border;
+}
 
 function loadTier(size) {
   return new Promise((resolve) => {
@@ -209,7 +309,7 @@ function clearCake() {
   const toRemove = [];
 
   scene.children.forEach((obj) => {
-    if (obj.userData.isCake) {
+    if (obj.userData.isCake || obj.userData.isShellBorder) {
       toRemove.push(obj);
     }
   });
@@ -233,6 +333,12 @@ async function buildCake(sizes) {
     tier.userData.size = size;
 
     scene.add(tier);
+
+    const box = new THREE.Box3().setFromObject(tier);
+    const radius = Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2;
+    const shellCount = getShellCountForRadius(radius);
+    const shellBorder = await createShellBorder(radius, box.max.y + 0.006, shellCount);
+    scene.add(shellBorder);
 
     currentHeight += height;
   }
@@ -288,6 +394,7 @@ function updateActiveTierColors({ frosting, filling, cake }) {
 window.buildCake = buildCake;
 window.updateCakeColors = updateCakeColors;
 window.updateActiveTierColors = updateActiveTierColors;
+window.createShellBorder = createShellBorder;
 
 buildCake([12, 10, 8]);
 
