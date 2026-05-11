@@ -14,6 +14,7 @@ const heroCustomizeButton = document.getElementById("hero-customize-btn");
 const landingPage = document.getElementById("landing-page");
 const menuPage = document.getElementById("menu-page");
 const menuGrid = document.getElementById("menu-grid");
+const galleryPage = document.getElementById("gallery-page");
 const displayCasePage = document.getElementById("display-case-page");
 const recommendationsPage = document.getElementById("recommendations-page");
 const recommendationsBackButton = document.getElementById("recommendations-back-btn");
@@ -83,6 +84,11 @@ const tieredOptions = [
   { tiers: [6, 8, 10, 12, 14], servings: 177 }
 ];
 
+const CUPCAKE_PRICE = 3;
+const CUPCAKE_QUANTITY_STEP = 12;
+const CUPCAKE_MAX_STANDALONE = 60;
+const CUPCAKE_MAX_SUPPLEMENT = 36;
+
 function getSavedAppState() {
   clearSavedAppState();
   return null;
@@ -107,6 +113,10 @@ function showLandingPageView() {
     menuPage.style.display = "none";
     menuPage.hidden = true;
   }
+  if (galleryPage) {
+    galleryPage.style.display = "none";
+    galleryPage.hidden = true;
+  }
   if (displayCasePage) {
     displayCasePage.style.display = "none";
     displayCasePage.hidden = true;
@@ -114,6 +124,7 @@ function showLandingPageView() {
   if (recommendationsPage) recommendationsPage.style.display = "";
   document.body.classList.remove("results-active");
   document.body.classList.remove("menu-active");
+  document.body.classList.remove("gallery-active");
   document.body.classList.remove("display-case-active");
   document.body.classList.remove("customizer-active");
   document.body.classList.remove("results-transitioning");
@@ -131,6 +142,10 @@ function showRecommendationsPageView() {
     menuPage.style.display = "none";
     menuPage.hidden = true;
   }
+  if (galleryPage) {
+    galleryPage.style.display = "none";
+    galleryPage.hidden = true;
+  }
   if (displayCasePage) {
     displayCasePage.style.display = "none";
     displayCasePage.hidden = true;
@@ -138,6 +153,7 @@ function showRecommendationsPageView() {
   if (recommendationsPage) recommendationsPage.style.display = "";
   document.body.classList.add("results-active");
   document.body.classList.remove("menu-active");
+  document.body.classList.remove("gallery-active");
   document.body.classList.remove("display-case-active");
   document.body.classList.remove("customizer-active");
   if (heroRecommendationMeta) {
@@ -151,11 +167,16 @@ function showCustomizerPageView() {
   teardownMenuPreviewObserver();
   document.body.classList.remove("results-active");
   document.body.classList.remove("menu-active");
+  document.body.classList.remove("gallery-active");
   document.body.classList.add("customizer-active");
   if (landingPage) landingPage.style.display = "none";
   if (menuPage) {
     menuPage.style.display = "none";
     menuPage.hidden = true;
+  }
+  if (galleryPage) {
+    galleryPage.style.display = "none";
+    galleryPage.hidden = true;
   }
   if (displayCasePage) {
     displayCasePage.style.display = "none";
@@ -172,6 +193,10 @@ function showMenuPageView() {
     menuPage.hidden = false;
     menuPage.style.display = "block";
   }
+  if (galleryPage) {
+    galleryPage.style.display = "none";
+    galleryPage.hidden = true;
+  }
   if (displayCasePage) {
     displayCasePage.style.display = "none";
     displayCasePage.hidden = true;
@@ -180,8 +205,35 @@ function showMenuPageView() {
   document.body.classList.remove("results-active");
   document.body.classList.remove("customizer-active");
   document.body.classList.remove("results-transitioning");
+  document.body.classList.remove("gallery-active");
   document.body.classList.remove("display-case-active");
   document.body.classList.add("menu-active");
+  const customizerEl = document.getElementById("customizer");
+  if (customizerEl) customizerEl.style.display = "none";
+}
+
+function showGalleryPageView() {
+  teardownMenuPreviewObserver();
+  if (landingPage) landingPage.style.display = "none";
+  if (menuPage) {
+    menuPage.style.display = "none";
+    menuPage.hidden = true;
+  }
+  if (galleryPage) {
+    galleryPage.hidden = false;
+    galleryPage.style.display = "block";
+  }
+  if (displayCasePage) {
+    displayCasePage.style.display = "none";
+    displayCasePage.hidden = true;
+  }
+  if (recommendationsPage) recommendationsPage.style.display = "";
+  document.body.classList.remove("results-active");
+  document.body.classList.remove("customizer-active");
+  document.body.classList.remove("menu-active");
+  document.body.classList.remove("display-case-active");
+  document.body.classList.remove("results-transitioning");
+  document.body.classList.add("gallery-active");
   const customizerEl = document.getElementById("customizer");
   if (customizerEl) customizerEl.style.display = "none";
 }
@@ -193,6 +245,10 @@ function showDisplayCasePageView() {
     menuPage.style.display = "none";
     menuPage.hidden = true;
   }
+  if (galleryPage) {
+    galleryPage.style.display = "none";
+    galleryPage.hidden = true;
+  }
   if (displayCasePage) {
     displayCasePage.hidden = false;
     displayCasePage.style.display = "block";
@@ -201,6 +257,7 @@ function showDisplayCasePageView() {
   document.body.classList.remove("results-active");
   document.body.classList.remove("customizer-active");
   document.body.classList.remove("menu-active");
+  document.body.classList.remove("gallery-active");
   document.body.classList.remove("results-transitioning");
   document.body.classList.add("display-case-active");
   const customizerEl = document.getElementById("customizer");
@@ -242,6 +299,12 @@ function openMenuPage() {
   showMenuPageView();
   renderMenuPage();
   setSavedAppState({ view: "menu" });
+}
+
+function openGalleryPage() {
+  debouncedLandingHeroPreviewUpdate.cancel();
+  showGalleryPageView();
+  setSavedAppState({ view: "gallery" });
 }
 
 function openDisplayCasePage() {
@@ -1128,6 +1191,52 @@ function getCustomizerVisualHTML(recommendation) {
 function getRecommendationParts(recommendation) {
   const sizes = (recommendation.name.match(/\d+/g) || []).map(Number);
 
+  if (recommendation.type === "cupcakes") {
+    return [
+      {
+        kind: "cupcakes",
+        cupcakeCount: recommendation.cupcakeCount || sizes[0],
+        label: `${recommendation.cupcakeCount || sizes[0]} Cupcakes`
+      }
+    ];
+  }
+
+  if (recommendation.type === "single-cupcakes") {
+    const roundSize = recommendation.roundSize || sizes[0];
+    const cupcakeCount = recommendation.cupcakeCount || sizes[sizes.length - 1];
+
+    return [
+      {
+        kind: "main",
+        size: roundSize,
+        label: `${roundSize}" Round`
+      },
+      {
+        kind: "cupcakes",
+        cupcakeCount,
+        label: `${cupcakeCount} Cupcakes`
+      }
+    ];
+  }
+
+  if (recommendation.type === "tiered-cupcakes") {
+    const cupcakeCount = recommendation.cupcakeCount || sizes[sizes.length - 1];
+    const tierSizes = recommendation.tierSizes || sizes.slice(0, -1);
+
+    return [
+      ...tierSizes.map(size => ({
+        kind: "main",
+        size,
+        label: `${size}" Round`
+      })),
+      {
+        kind: "cupcakes",
+        cupcakeCount,
+        label: `${cupcakeCount} Cupcakes`
+      }
+    ];
+  }
+
   if (recommendation.type === "single-sheet") {
     return [
       {
@@ -1759,6 +1868,22 @@ function formatRecommendationDisplayName(recommendation) {
   const name = recommendation?.name || "";
   const sizes = (name.match(/\d+/g) || []).map(Number);
 
+  if (recommendation?.type === "cupcakes") {
+    return `${recommendation.cupcakeCount || sizes[0] || 0} Cupcakes`;
+  }
+
+  if (recommendation?.type === "single-cupcakes") {
+    const roundSize = recommendation.roundSize || sizes[0];
+    const cupcakeCount = recommendation.cupcakeCount || sizes[sizes.length - 1];
+    return `${roundSize}" Round + ${cupcakeCount} Cupcakes`;
+  }
+
+  if (recommendation?.type === "tiered-cupcakes") {
+    const cupcakeCount = recommendation.cupcakeCount || sizes[sizes.length - 1];
+    const tierSizes = (recommendation.tierSizes || sizes.slice(0, -1)).slice().sort((a, b) => a - b);
+    return `${tierSizes.map((size) => `${size}`).join(" + ")}" Tiered + ${cupcakeCount} Cupcakes`;
+  }
+
   if (recommendation?.type === "tiered") {
     return `${sizes.sort((a, b) => a - b).map((size) => `${size}`).join(" + ")}" Tiered`;
   }
@@ -1794,8 +1919,95 @@ function createSheetCakePreviewNode(labelText, className = "") {
   return sheetPreview;
 }
 
+function createCupcakePreviewNode(count) {
+  const cupcakePreview = document.createElement("div");
+  cupcakePreview.className = "cupcake-preview";
+  cupcakePreview.setAttribute("aria-label", `${count} cupcakes`);
+
+  const grid = document.createElement("div");
+  grid.className = "cupcake-preview-grid";
+  const visibleCount = Math.min(count || CUPCAKE_QUANTITY_STEP, CUPCAKE_QUANTITY_STEP);
+
+  for (let i = 0; i < visibleCount; i++) {
+    const cupcake = document.createElement("span");
+    cupcake.className = "cupcake-preview-cupcake";
+    cupcake.innerHTML = `
+      <span class="cupcake-preview-frosting"></span>
+      <span class="cupcake-preview-liner"></span>
+    `;
+    grid.appendChild(cupcake);
+  }
+
+  const label = document.createElement("div");
+  label.className = "cupcake-preview-label";
+  label.textContent = `${count} Cupcakes`;
+
+  cupcakePreview.appendChild(grid);
+  cupcakePreview.appendChild(label);
+  return cupcakePreview;
+}
+
 function getRecommendationCardSections(recommendation) {
   const sizes = (recommendation.name.match(/\d+/g) || []).map(Number);
+
+  if (recommendation.type === "cupcakes") {
+    return [
+      {
+        title: "Cupcakes",
+        detail: `${recommendation.cupcakeCount || sizes[0]}`,
+        visualType: "cupcakes",
+        cupcakeCount: recommendation.cupcakeCount || sizes[0]
+      }
+    ];
+  }
+
+  if (recommendation.type === "single-cupcakes") {
+    const roundSize = recommendation.roundSize || sizes[0];
+    const cupcakeCount = recommendation.cupcakeCount || sizes[sizes.length - 1];
+    return [
+      {
+        title: "Round Cake",
+        detail: `${roundSize}"`,
+        visualType: "3d",
+        recommendation: {
+          name: `${roundSize}" cake`,
+          type: "single",
+          servings: recommendation.servings - cupcakeCount
+        }
+      },
+      {
+        title: "Cupcakes",
+        detail: `${cupcakeCount}`,
+        visualType: "cupcakes",
+        compact: true,
+        cupcakeCount
+      }
+    ];
+  }
+
+  if (recommendation.type === "tiered-cupcakes") {
+    const cupcakeCount = recommendation.cupcakeCount || sizes[sizes.length - 1];
+    const tierSizes = (recommendation.tierSizes || sizes.slice(0, -1)).slice().sort((a, b) => a - b);
+    return [
+      {
+        title: "Tiered Cake",
+        detail: getTierDisplayText(tierSizes),
+        visualType: "3d",
+        recommendation: {
+          name: `${getTierDisplayText(tierSizes)} tiered cake`,
+          type: "tiered",
+          servings: recommendation.servings - cupcakeCount
+        }
+      },
+      {
+        title: "Cupcakes",
+        detail: `${cupcakeCount}`,
+        visualType: "cupcakes",
+        compact: true,
+        cupcakeCount
+      }
+    ];
+  }
 
   if (recommendation.type === "single") {
     const size = sizes[0];
@@ -1928,7 +2140,9 @@ function buildRecommendationVisualLayout(container, recommendation) {
     stack.appendChild(sectionWrap);
 
     renderQueue.push(() => {
-      if (section.recommendation) {
+      if (section.visualType === "cupcakes") {
+        visual.appendChild(createCupcakePreviewNode(section.cupcakeCount));
+      } else if (section.recommendation) {
         initRecommendationCake3D(visual, section.recommendation);
       }
     });
@@ -2396,21 +2610,22 @@ async function buildCake3D(parts) {
   }
 
   const mainBox = new THREE.Box3();
-  cakeObjects
-    .filter((entry) => entry.kind === "main")
-    .forEach((entry) => {
-      mainBox.expandByObject(entry.object);
-    });
+  const mainEntries = cakeObjects.filter((entry) => entry.kind === "main");
+  mainEntries.forEach((entry) => {
+    mainBox.expandByObject(entry.object);
+  });
 
-  const center = new THREE.Vector3();
-  mainBox.getCenter(center);
+  if (mainEntries.length) {
+    const center = new THREE.Vector3();
+    mainBox.getCenter(center);
 
-  group.position.x -= center.x;
-  group.position.z -= center.z;
-  group.position.y -= mainBox.min.y;
-  group.position.y += 0.26;
+    group.position.x -= center.x;
+    group.position.z -= center.z;
+    group.position.y -= mainBox.min.y;
+    group.position.y += 0.26;
 
-  syncBackupAnimationState();
+    syncBackupAnimationState();
+  }
 
   group.scale.setScalar(1.55);
 
@@ -3472,7 +3687,107 @@ const tierBasePrices = {
   14: 190
 };
 
+function getCupcakeQuantityForServings(servings, maxQuantity = Infinity) {
+  if (!Number.isFinite(servings) || servings <= 0) return null;
+
+  const quantity = Math.ceil(servings / CUPCAKE_QUANTITY_STEP) * CUPCAKE_QUANTITY_STEP;
+  return quantity <= maxQuantity ? quantity : null;
+}
+
+function getTieredRecommendationName(tierSizes) {
+  return `${tierSizes.slice().sort((a, b) => a - b).map((size) => `${size}"`).join(" + ")} tiered cake`;
+}
+
+function getRecommendationCakeServings(recommendation) {
+  if (recommendation.type === "cupcakes") return 0;
+  return Math.max((recommendation.servings || 0) - (recommendation.cupcakeCount || 0), 0);
+}
+
+function getCupcakeSupplementScore(gap, cupcakeCount) {
+  const overage = cupcakeCount - gap;
+  const smallGapCredit = gap <= 12 ? -6 : 0;
+  return overage + 2 + smallGapCredit;
+}
+
+function buildCupcakeRecommendations(guests) {
+  const cupcakeRecommendations = [];
+  const standaloneCupcakes = getCupcakeQuantityForServings(guests, CUPCAKE_MAX_STANDALONE);
+
+  if (standaloneCupcakes) {
+    cupcakeRecommendations.push({
+      name: `${standaloneCupcakes} Cupcakes`,
+      servings: standaloneCupcakes,
+      type: "cupcakes",
+      cupcakeCount: standaloneCupcakes,
+      score: (standaloneCupcakes - guests) + 8
+    });
+  }
+
+  cakeOptions.forEach((cake) => {
+    if (cake.type !== "round") return;
+    if (cake.servings >= guests) return;
+
+    const gap = guests - cake.servings;
+    const cupcakeCount = getCupcakeQuantityForServings(gap, CUPCAKE_MAX_SUPPLEMENT);
+    if (!cupcakeCount) return;
+
+    const totalServings = cake.servings + cupcakeCount;
+    const undersizedMainPenalty = guests > 40 && cake.size < 10 ? 8 : 0;
+
+    cupcakeRecommendations.push({
+      name: `${cake.size}" Round + ${cupcakeCount} Cupcakes`,
+      servings: totalServings,
+      type: "single-cupcakes",
+      roundSize: cake.size,
+      cupcakeCount,
+      score: getCupcakeSupplementScore(gap, cupcakeCount) + undersizedMainPenalty
+    });
+  });
+
+  tieredOptions.forEach((tierOption) => {
+    if (tierOption.servings >= guests) return;
+
+    const gap = guests - tierOption.servings;
+    const cupcakeCount = getCupcakeQuantityForServings(gap, CUPCAKE_MAX_SUPPLEMENT);
+    if (!cupcakeCount) return;
+
+    const tierCount = tierOption.tiers.length;
+    const smallestTier = Math.min(...tierOption.tiers);
+    let score = getCupcakeSupplementScore(gap, cupcakeCount);
+
+    if (guests < 60 && tierCount > 2) score += 2;
+    if (guests > 40 && smallestTier < 8 && smallestTier !== 6) score += 10;
+    if (tierOption.tiers.includes(6)) score -= 3;
+    if (tierCount === 3) score -= 2;
+
+    cupcakeRecommendations.push({
+      name: `${getTieredRecommendationName(tierOption.tiers)} + ${cupcakeCount} Cupcakes`,
+      servings: tierOption.servings + cupcakeCount,
+      type: "tiered-cupcakes",
+      tierSizes: tierOption.tiers.slice(),
+      cupcakeCount,
+      score
+    });
+  });
+
+  return cupcakeRecommendations;
+}
+
 function getBasePrice(recommendation) {
+  if (recommendation.type === "cupcakes") {
+    return (recommendation.cupcakeCount || 0) * CUPCAKE_PRICE;
+  }
+
+  if (recommendation.type === "single-cupcakes") {
+    return (tierBasePrices[recommendation.roundSize] || 0) + ((recommendation.cupcakeCount || 0) * CUPCAKE_PRICE);
+  }
+
+  if (recommendation.type === "tiered-cupcakes") {
+    const sizes = recommendation.tierSizes || (recommendation.name.match(/\d+/g) || []).map(Number).slice(0, -1);
+    const tierPrice = sizes.reduce((total, size) => total + (tierBasePrices[size] || 0), 0);
+    return tierPrice + ((recommendation.cupcakeCount || 0) * CUPCAKE_PRICE);
+  }
+
   if (recommendation.type === "single" || recommendation.type === "single-sheet") {
     return baseCakePrices[recommendation.name] || 0;
   }
@@ -3698,6 +4013,8 @@ for (let i = 0; i < cakeOptions.length; i++) {
   }
 }
 
+recommendations.push(...buildCupcakeRecommendations(guests));
+
 // SORT BEST TO WORST
 recommendations.sort((a, b) => a.score - b.score);
 
@@ -3707,6 +4024,22 @@ let seenKeys = [];
 let seenTypes = [];
 
 function getRecommendationUniqueKey(recommendation) {
+  if (recommendation.type === "cupcakes") {
+    return `cupcakes-${recommendation.cupcakeCount || recommendation.servings || recommendation.name}`;
+  }
+
+  if (recommendation.type === "single-cupcakes") {
+    return `single-cupcakes-${recommendation.roundSize}-${recommendation.cupcakeCount}`;
+  }
+
+  if (recommendation.type === "tiered-cupcakes") {
+    const tierSizes = (recommendation.tierSizes || (recommendation.name.match(/\d+/g) || []).map(Number).slice(0, -1))
+      .slice()
+      .sort((a, b) => a - b)
+      .join("-");
+    return `tiered-cupcakes-${tierSizes}-${recommendation.cupcakeCount}`;
+  }
+
   if (recommendation.type === "tiered") {
     return recommendation.name
       .replace(" tiered cake", "")
@@ -3764,7 +4097,10 @@ function getRecommendationStatePayload(activeRecommendation = null, customizerSt
     recommendation: activeRecommendation ? {
       name: activeRecommendation.name,
       type: activeRecommendation.type,
-      servings: activeRecommendation.servings
+      servings: activeRecommendation.servings,
+      roundSize: activeRecommendation.roundSize,
+      tierSizes: activeRecommendation.tierSizes,
+      cupcakeCount: activeRecommendation.cupcakeCount
     } : null,
     customizerState
   };
@@ -4220,6 +4556,7 @@ const selections = Array.isArray(restoredCustomizerState?.selections) && restore
   ? restoredCustomizerState.selections.map((selection) => ({
       label: selection.label,
       size: selection.size,
+      cupcakeCount: selection.cupcakeCount,
       kind: selection.kind,
       flavor: selection.flavor || "",
       frosting: selection.frosting || "",
@@ -4235,6 +4572,7 @@ const selections = Array.isArray(restoredCustomizerState?.selections) && restore
   : parts.map(part => ({
       label: part.label,
       size: part.size,
+      cupcakeCount: part.cupcakeCount,
       kind: part.kind,
       flavor: "",
       frosting: "",
@@ -4270,6 +4608,7 @@ function getCurrentBuilderParts() {
       ...(matchingOriginalPart || {}),
       kind: selection.kind,
       size: selection.size,
+      cupcakeCount: selection.cupcakeCount,
       label: selection.label
     };
   });
@@ -4285,6 +4624,7 @@ function persistCustomizerState(view = "customizer") {
     selections: selections.map((selection) => ({
       label: selection.label,
       size: selection.size,
+      cupcakeCount: selection.cupcakeCount,
       kind: selection.kind,
       flavor: selection.flavor || "",
       frosting: selection.frosting || "",
@@ -4341,6 +4681,10 @@ function formatMoney(value) {
 function getSelectionBasePrice(selection) {
   if (!selection) return 0;
 
+  if (selection.kind === "cupcakes") {
+    return (selection.cupcakeCount || 0) * CUPCAKE_PRICE;
+  }
+
   if (selection.kind === "main" || selection.kind === "backup" || selection.kind === "extra-backup") {
     if (selection.label.includes("Sheet Backup")) {
       if (recommendation.name.includes("1/4")) return baseCakePrices["1/4 sheet cake"] || 0;
@@ -4365,6 +4709,10 @@ function getSelectionExtras(selection) {
 
 function getSelectionServings(selection) {
   if (!selection) return 0;
+
+  if (selection.kind === "cupcakes") {
+    return selection.cupcakeCount || 0;
+  }
 
   if (selection.size) {
     return getRoundCakeOption(selection.size)?.servings || 0;
@@ -5636,7 +5984,7 @@ menuTab?.addEventListener("click", () => {
 });
 
 galleryTab?.addEventListener("click", () => {
-  returnToLandingPage();
+  openGalleryPage();
 });
 
 displayCaseTab?.addEventListener("click", () => {
