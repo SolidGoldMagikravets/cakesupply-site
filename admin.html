@@ -1,0 +1,1887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Cake Supply Admin Orders</title>
+  <link rel="icon" href="pixilart-drawing.png">
+  <style>
+    @font-face {
+      font-family: "Shelten";
+      src: url("fonts/Shelten.ttf");
+    }
+
+    :root {
+      --font-serif: Minion, "Minion Pro", "Adobe Caslon Pro", Georgia, "Times New Roman", serif;
+      --font-sans: "Avenir Next", Avenir, "Helvetica Neue", Arial, sans-serif;
+      --ink: #181716;
+      --muted: #6d6963;
+      --line: #ddd7cf;
+      --paper: #fbfaf8;
+      --panel: #ffffff;
+      --soft: #f1eee9;
+      --rose: #b16a6f;
+      --sage: #66785f;
+      --gold: #a8742a;
+      --blue: #536f8d;
+      --shadow: 0 18px 48px rgba(34, 27, 20, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--font-sans);
+      line-height: 1.45;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .admin-shell {
+      width: min(100%, 1440px);
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .admin-topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: center;
+      gap: 24px;
+      margin-bottom: 22px;
+    }
+
+    .admin-logo-lockup {
+      grid-column: 2;
+      justify-self: center;
+      width: min(100%, 280px);
+    }
+
+    .admin-actions {
+      grid-column: 3;
+      justify-self: end;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transform: translateY(58px);
+    }
+
+    .admin-logo {
+      width: min(100%, 280px);
+      max-width: 280px;
+      aspect-ratio: 1774 / 887;
+      height: auto;
+      margin: 10px auto 4px;
+      display: block;
+      border-radius: 0;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      margin-bottom: 0;
+      font-family: var(--font-serif);
+      font-size: clamp(30px, 4vw, 48px);
+      font-weight: 500;
+      line-height: 0.95;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin-bottom: 12px;
+      font-size: 17px;
+      line-height: 1.1;
+    }
+
+    h3 {
+      margin-bottom: 8px;
+      font-size: 14px;
+      line-height: 1.2;
+    }
+
+    .badge,
+    .button,
+    .icon-button {
+      min-height: 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+
+    .badge {
+      padding: 7px 12px;
+      border: 1px solid rgba(177, 106, 111, 0.28);
+      background: #fff4f4;
+      color: #783f43;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .button {
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: #fff;
+      padding: 8px 13px;
+      font-weight: 700;
+    }
+
+    .button.secondary {
+      border-color: var(--line);
+      background: var(--panel);
+      color: var(--ink);
+    }
+
+    .button:disabled {
+      cursor: not-allowed;
+      opacity: 0.58;
+    }
+
+    .icon-button {
+      width: 38px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--ink);
+      padding: 0;
+    }
+
+    .dashboard-toggle,
+    .search-toggle,
+    .calendar-toggle {
+      border-color: transparent;
+      background: transparent;
+      color: rgba(31, 31, 31, 0.82);
+    }
+
+    .dashboard-toggle:hover,
+    .dashboard-toggle:focus-visible,
+    .search-toggle:hover,
+    .search-toggle:focus-visible,
+    .calendar-toggle:hover,
+    .calendar-toggle:focus-visible {
+      color: #111;
+      background: rgba(31, 31, 31, 0.04);
+      border-color: rgba(31, 31, 31, 0.12);
+    }
+
+    .dashboard-toggle svg,
+    .search-toggle svg,
+    .calendar-toggle svg {
+      width: 21px;
+      height: 21px;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.55;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .dashboard-grid {
+      display: block;
+    }
+
+    .orders-dashboard-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 250px;
+      gap: 22px;
+      align-items: start;
+      margin-top: 18px;
+    }
+
+    .orders-main {
+      min-width: 0;
+    }
+
+    .overview-panel {
+      min-height: 520px;
+      padding: 34px 30px;
+      border-left: 1px solid rgba(221, 215, 207, 0.7);
+      background: #f8f6f2;
+      color: var(--ink);
+      position: sticky;
+      top: 42px;
+    }
+
+    .overview-title {
+      margin-bottom: 32px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .overview-list {
+      display: grid;
+      gap: 36px;
+    }
+
+    .overview-metric span {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .overview-metric strong {
+      color: var(--ink);
+      font-size: 32px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .overview-trend {
+      margin-left: 6px;
+      color: #b86d4d;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .orders-view[hidden],
+    .calendar-view[hidden] {
+      display: none !important;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .filters {
+      display: grid;
+      gap: 12px;
+      padding: 18px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      padding: 9px 10px;
+    }
+
+    textarea {
+      min-height: 88px;
+      resize: vertical;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus,
+    button:focus-visible {
+      outline: 2px solid rgba(83, 111, 141, 0.38);
+      outline-offset: 2px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      min-width: 1180px;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th,
+    td {
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th {
+      background: #fbfaf8;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    td {
+      color: #242220;
+      font-size: 14px;
+    }
+
+    tbody tr:hover {
+      background: #fbf8f4;
+    }
+
+    .order-name {
+      display: block;
+      margin-bottom: 3px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font-weight: 800;
+      line-height: 1.25;
+      text-align: left;
+      white-space: normal;
+    }
+
+    .order-name:hover,
+    .order-name:focus-visible {
+      color: var(--blue);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 26px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .status-inquiry {
+      background: #edf3f6;
+      color: #31566b;
+    }
+
+    .status-quote {
+      background: #fff2d7;
+      color: #805614;
+    }
+
+    .status-booked {
+      background: #edf5e9;
+      color: #3d6135;
+    }
+
+    .status-baked {
+      background: #f7e7d8;
+      color: #7f4d22;
+    }
+
+    .status-filled,
+    .status-frosted {
+      background: #f1ece6;
+      color: #6e5846;
+    }
+
+    .status-decorated {
+      background: #f4e8ee;
+      color: #7a465d;
+    }
+
+    .status-delivered {
+      background: #ececec;
+      color: #4c4c4c;
+    }
+
+    .payment-due {
+      color: #a04632;
+      font-weight: 800;
+    }
+
+    .payment-paid {
+      color: #3f6a35;
+      font-weight: 800;
+    }
+
+    .order-progress {
+      width: min(100%, 760px);
+      max-width: 100%;
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: 0;
+      padding: 2px 0 0;
+    }
+
+    .order-progress-step {
+      position: relative;
+      flex: 1 1 0;
+      min-width: 56px;
+      display: grid;
+      justify-items: center;
+      gap: 5px;
+      padding: 0 4px;
+    }
+
+    .order-progress-step::before {
+      content: "";
+      width: 14px;
+      height: 14px;
+      display: block;
+      border: 2px solid #d8d4cf;
+      border-radius: 50%;
+      background: #fff;
+      position: relative;
+      z-index: 1;
+    }
+
+    .order-progress-step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 7px;
+      left: calc(50% + 10px);
+      width: calc(100% - 20px);
+      height: 2px;
+      background: #d8d4cf;
+    }
+
+    .order-progress-step.is-complete::before,
+    .order-progress-step.is-current::before {
+      border-color: cornflowerblue;
+    }
+
+    .order-progress-step.is-current::before {
+      background: cornflowerblue;
+      box-shadow: inset 0 0 0 3px #fff;
+    }
+
+    .order-progress-step.is-complete::after {
+      background: cornflowerblue;
+    }
+
+    .order-progress-step.is-complete span,
+    .order-progress-step.is-current span {
+      color: cornflowerblue;
+    }
+
+    .order-progress-step span {
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 1.05;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .progress-row td {
+      padding-top: 0;
+      padding-bottom: 15px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .progress-row-spacer {
+      border-bottom: 1px solid var(--line);
+    }
+
+    .progress-row-main {
+      padding-left: 13px;
+    }
+
+    tr.has-progress > td {
+      border-bottom: 0;
+    }
+
+    .filter-panel {
+      position: fixed;
+      top: 118px;
+      right: max(24px, calc((100vw - 1440px) / 2 + 24px));
+      z-index: 80;
+      width: min(360px, calc(100vw - 32px));
+      max-height: 340px;
+      border-radius: 8px;
+      transform: translateX(calc(100% + 64px));
+      transition: transform 260ms ease;
+      box-shadow: 0 18px 50px rgba(34, 27, 20, 0.16);
+      overflow: auto;
+    }
+
+    .filter-panel.is-open {
+      transform: translateX(0);
+    }
+
+    .filter-panel .filters {
+      gap: 8px;
+      padding: 14px 16px 16px;
+    }
+
+    .filter-panel input,
+    .filter-panel select {
+      min-height: 36px;
+      padding: 7px 10px;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(22, 20, 18, 0.48);
+    }
+
+    .modal-overlay.is-open {
+      display: flex;
+    }
+
+    .order-modal {
+      width: min(100%, 1180px);
+      max-height: min(92vh, 920px);
+      display: flex;
+      flex-direction: column;
+      border: 1px solid rgba(60, 84, 110, 0.22);
+      border-radius: 16px;
+      background: #bdeaf0;
+      color: #1d2430;
+      box-shadow: 0 24px 70px rgba(15, 26, 38, 0.28);
+      overflow: hidden;
+    }
+
+    .modal-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 18px;
+      background: rgba(255, 255, 255, 0.42);
+      border-bottom: 1px solid rgba(23, 37, 52, 0.16);
+    }
+
+    .modal-toolbar h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .modal-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .sheet-scroll {
+      overflow: auto;
+    }
+
+    .blue-sheet {
+      min-width: 920px;
+      padding: 22px 24px 0;
+    }
+
+    .sheet-header {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 24px;
+      margin-bottom: 18px;
+    }
+
+    .sheet-brand {
+      margin-bottom: 18px;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 0.13em;
+    }
+
+    .sheet-customer {
+      display: grid;
+      gap: 6px;
+      max-width: 360px;
+    }
+
+    .sheet-customer-name {
+      font-size: 28px;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+
+    .sheet-small-input,
+    .sheet-input,
+    .sheet-textarea,
+    .sheet-select {
+      width: 100%;
+      min-height: auto;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.26);
+      color: #1d2430;
+      padding: 3px 5px;
+    }
+
+    .sheet-small-input {
+      font-size: 14px;
+      line-height: 1.25;
+    }
+
+    .sheet-customer-name .sheet-input {
+      font-size: 28px;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+
+    .sheet-meta {
+      display: grid;
+      gap: 5px;
+      justify-items: end;
+      text-align: right;
+    }
+
+    .sheet-promise,
+    .sheet-status {
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1.12;
+    }
+
+    .sheet-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      width: 100%;
+      font-size: 14px;
+    }
+
+    .sheet-meta-row label {
+      color: #283342;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    .sheet-contact-row {
+      display: grid;
+      grid-template-columns: 0.85fr 1.15fr;
+      gap: 24px;
+      min-height: 82px;
+      margin-bottom: 14px;
+    }
+
+    .sheet-contact-right {
+      justify-self: start;
+      width: min(100%, 360px);
+      display: grid;
+      gap: 4px;
+    }
+
+    .sheet-table-head,
+    .sheet-item-row {
+      display: grid;
+      grid-template-columns: 140px 1fr 120px 120px;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .sheet-table-head {
+      padding: 8px 0 7px;
+      border-top: 1px solid rgba(23, 37, 52, 0.24);
+      border-bottom: 1px solid rgba(23, 37, 52, 0.24);
+      font-weight: 800;
+    }
+
+    .sheet-table-head span:nth-child(3),
+    .sheet-table-head span:nth-child(4),
+    .sheet-price,
+    .sheet-total {
+      text-align: right;
+    }
+
+    .sheet-items {
+      min-height: 94px;
+    }
+
+    .sheet-item-row {
+      padding: 10px 0;
+    }
+
+    .sheet-description {
+      display: grid;
+      gap: 8px;
+    }
+
+    .sheet-description .sheet-textarea {
+      min-height: 76px;
+    }
+
+    .sheet-totals {
+      display: grid;
+      grid-template-columns: 1fr 310px;
+      gap: 18px;
+      padding: 22px 0 48px;
+    }
+
+    .sheet-policy {
+      max-width: 410px;
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1.28;
+      text-align: center;
+    }
+
+    .sheet-total-row {
+      grid-column: 2;
+      display: grid;
+      grid-template-columns: 1fr 110px;
+      gap: 12px;
+      align-items: center;
+      font-size: 15px;
+    }
+
+    .sheet-total-row strong {
+      font-weight: 800;
+    }
+
+    .sheet-total-row .sheet-small-input {
+      text-align: right;
+    }
+
+    .sheet-footer {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 18px;
+      align-items: center;
+      margin: 0 -24px;
+      padding: 12px 24px 16px;
+      border-top: 1px solid rgba(23, 37, 52, 0.18);
+      font-size: 14px;
+    }
+
+    .sheet-footer span:nth-child(2) {
+      text-align: center;
+    }
+
+    .sheet-footer span:last-child {
+      text-align: right;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .empty-state {
+      display: none;
+      padding: 28px 18px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .empty-state.is-visible {
+      display: block;
+    }
+
+    .calendar-view {
+      margin-top: 18px;
+    }
+
+    .calendar-panel {
+      padding: 18px;
+    }
+
+    .calendar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .calendar-title {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(112px, 1fr));
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .calendar-weekday,
+    .calendar-day {
+      min-width: 0;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .calendar-weekday:nth-child(7n),
+    .calendar-day:nth-child(7n) {
+      border-right: 0;
+    }
+
+    .calendar-day:nth-last-child(-n + 7) {
+      border-bottom: 0;
+    }
+
+    .calendar-weekday {
+      padding: 10px;
+      background: #fbfaf8;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .calendar-day {
+      min-height: 126px;
+      padding: 9px;
+      background: #fff;
+    }
+
+    .calendar-day.is-muted {
+      background: #fbfaf8;
+      color: rgba(109, 105, 99, 0.48);
+    }
+
+    .calendar-date {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .calendar-event {
+      width: 100%;
+      display: block;
+      margin-bottom: 6px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f7f4ef;
+      color: var(--ink);
+      padding: 7px 8px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: normal;
+    }
+
+    .calendar-event span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 1180px) {
+      .orders-dashboard-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .overview-panel {
+        min-height: auto;
+        position: static;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 22px;
+        order: -1;
+      }
+
+      .overview-list {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .dashboard-grid {
+        display: block;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .admin-shell {
+        padding: 16px;
+      }
+
+      .admin-topbar {
+        gap: 12px;
+      }
+
+      .admin-actions {
+        justify-self: end;
+      }
+
+      .filter-panel {
+        top: 146px;
+        right: 16px;
+        max-height: 350px;
+      }
+
+      .filters,
+      .split {
+        grid-template-columns: 1fr;
+      }
+
+      .admin-logo {
+        width: min(100%, 280px);
+      }
+
+      .modal-overlay {
+        padding: 12px;
+        align-items: stretch;
+      }
+
+      .order-modal {
+        max-height: calc(100vh - 24px);
+      }
+
+      .modal-toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .modal-actions {
+        width: 100%;
+        justify-content: flex-start;
+      }
+
+      .calendar-panel {
+        padding: 12px;
+      }
+
+      .calendar-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .calendar-grid {
+        grid-template-columns: repeat(7, minmax(88px, 1fr));
+        overflow-x: auto;
+      }
+
+      .overview-panel {
+        grid-template-columns: 1fr;
+        padding: 22px;
+      }
+
+      .overview-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="admin-shell">
+    <header class="admin-topbar">
+      <div class="admin-logo-lockup">
+        <img src="primarylogo.jpg" alt="Cake Supply" class="admin-logo">
+      </div>
+      <div class="admin-actions">
+        <button class="icon-button dashboard-toggle" type="button" id="dashboard-toggle" aria-label="Open main admin dashboard">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M5 7h14"></path>
+            <path d="M5 12h14"></path>
+            <path d="M5 17h14"></path>
+          </svg>
+        </button>
+        <button class="icon-button calendar-toggle" type="button" id="calendar-toggle" aria-label="Open calendar view" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M7 3v3"></path>
+            <path d="M17 3v3"></path>
+            <path d="M4 9h16"></path>
+            <rect x="4" y="5" width="16" height="16" rx="2"></rect>
+          </svg>
+        </button>
+        <button class="icon-button search-toggle" type="button" id="search-toggle" aria-label="Open order search" aria-expanded="false" aria-controls="search-panel">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="m16.5 16.5 4 4"></path>
+          </svg>
+        </button>
+        <button class="button" type="button" disabled title="Connect a private backend before enabling order creation">New order</button>
+      </div>
+    </header>
+
+    <div class="orders-view" id="orders-view">
+      <div class="orders-dashboard-layout">
+        <div class="orders-main">
+          <div class="dashboard-grid">
+            <section class="panel" aria-labelledby="orders-heading">
+              <div class="table-wrap">
+                <table>
+            <caption class="sr-only" id="orders-heading">Admin order tracking table with placeholder data</caption>
+            <thead>
+              <tr>
+                <th scope="col">Customer</th>
+                <th scope="col">Date</th>
+                <th scope="col">Time</th>
+                <th scope="col">Pickup/Delivery</th>
+                <th scope="col">Cake</th>
+                <th scope="col">Flavor</th>
+                <th scope="col">Decor</th>
+                <th scope="col">Payment</th>
+                <th scope="col">Notes</th>
+              </tr>
+            </thead>
+            <tbody id="orders-body">
+              <tr class="has-progress" data-status="inquiry" data-event-date="2026-05-18">
+                <td>
+                  <button class="order-name" type="button" data-open-order data-order-name="Sample Birthday Inquiry">Demo Customer A</button>
+                  <span class="meta">#1001</span>
+                </td>
+                <td>May 18, 2026</td>
+                <td>10:00 AM</td>
+                <td>Pickup<div class="meta">&nbsp;</div></td>
+                <td>8 inch round, 1 tier</td>
+                <td>Chocolate, raspberry, vanilla buttercream</td>
+                <td>Pink piping, cherries, short message</td>
+                <td>
+                  <span class="payment-due">$120 balance</span>
+                  <div class="meta">$30 deposit placeholder</div>
+                </td>
+                <td>Needs quote after serving count confirmation.</td>
+              </tr>
+              <tr class="has-progress" data-status="quote" data-event-date="2026-05-24">
+                <td>
+                  <button class="order-name" type="button" data-open-order data-order-name="Sample Baby Shower Quote">Demo Customer B</button>
+                  <span class="meta">#1002</span>
+                </td>
+                <td>May 24, 2026</td>
+                <td>2:30 PM</td>
+                <td>Delivery<div class="meta">Road St.</div></td>
+                <td>10 inch round, 1 tier</td>
+                <td>Lemon, blueberry compote, cream cheese frosting</td>
+                <td>Pastel florals, soft blue border</td>
+                <td>
+                  <span class="payment-due">$185 balance</span>
+                  <div class="meta">Awaiting deposit</div>
+                </td>
+                <td>Quote sent. Follow up after menu approval.</td>
+              </tr>
+              <tr class="has-progress" data-status="booked" data-event-date="2026-06-06">
+                <td>
+                  <button class="order-name" type="button" data-open-order data-order-name="Sample Wedding Cutting Cake">Demo Customer C</button>
+                  <span class="meta">#1003</span>
+                </td>
+                <td>Jun 6, 2026</td>
+                <td>12:00 PM</td>
+                <td>Delivery<div class="meta">Road St.</div></td>
+                <td>6 and 8 inch round, 2 tiers</td>
+                <td>Almond, apricot, Swiss meringue buttercream</td>
+                <td>Ivory finish, pearl border, small florals</td>
+                <td>
+                  <span class="payment-due">$260 balance</span>
+                  <div class="meta">$150 deposit paid</div>
+                </td>
+                <td>Confirm floral colors one week before event.</td>
+              </tr>
+              <tr class="has-progress" data-status="baked" data-event-date="2026-05-12">
+                <td>
+                  <button class="order-name" type="button" data-open-order data-order-name="Sample Sheet Cake">Demo Customer D</button>
+                  <span class="meta">#1004</span>
+                </td>
+                <td>May 12, 2026</td>
+                <td>9:30 AM</td>
+                <td>Pickup<div class="meta">&nbsp;</div></td>
+                <td>1/2 sheet</td>
+                <td>Vanilla, strawberry, vanilla buttercream</td>
+                <td>Simple border, school colors</td>
+                <td>
+                  <span class="payment-paid">Paid in full</span>
+                  <div class="meta">$0 balance</div>
+                </td>
+                <td>Ready for crumb coat and message.</td>
+              </tr>
+              <tr class="has-progress" data-status="decorated" data-event-date="2026-05-10">
+                <td>
+                  <button class="order-name" type="button" data-open-order data-order-name="Sample Anniversary Cake">Demo Customer E</button>
+                  <span class="meta">#1005</span>
+                </td>
+                <td>May 10, 2026</td>
+                <td>4:00 PM</td>
+                <td>Pickup<div class="meta">&nbsp;</div></td>
+                <td>6 inch round, 1 tier</td>
+                <td>Red velvet, cream cheese, vanilla buttercream</td>
+                <td>Vintage piping, red accents</td>
+                <td>
+                  <span class="payment-due">$45 balance</span>
+                  <div class="meta">$75 deposit paid</div>
+                </td>
+                <td>Box and chill before pickup window.</td>
+              </tr>
+              <tr class="has-progress" data-status="delivered" data-event-date="2026-05-03">
+                <td>
+                  <button class="order-name" type="button" data-open-order data-order-name="Sample Cupcake Add-on">Demo Customer F</button>
+                  <span class="meta">#1006</span>
+                </td>
+                <td>May 3, 2026</td>
+                <td>Completed</td>
+                <td>Pickup<div class="meta">&nbsp;</div></td>
+                <td>24 cupcakes</td>
+                <td>Chocolate and vanilla assortment</td>
+                <td>Two-tone swirls, sprinkles</td>
+                <td>
+                  <span class="payment-paid">Paid in full</span>
+                  <div class="meta">$0 balance</div>
+                </td>
+                <td>Archived placeholder order.</td>
+              </tr>
+            </tbody>
+                </table>
+              </div>
+              <div class="empty-state" id="empty-state">No placeholder orders match these filters.</div>
+            </section>
+          </div>
+        </div>
+
+        <aside class="overview-panel" aria-labelledby="overview-title">
+          <div>
+            <h2 class="overview-title" id="overview-title">Overview</h2>
+            <div class="overview-list" aria-label="Order overview">
+              <div class="overview-metric">
+                <span>Orders Today</span>
+                <strong id="overview-today">0</strong>
+              </div>
+              <div class="overview-metric">
+                <span>Pending Orders</span>
+                <strong id="overview-pending">0</strong>
+              </div>
+              <div class="overview-metric">
+                <span>Delivered</span>
+                <strong id="overview-delivered">0</strong><em class="overview-trend">-3%</em>
+              </div>
+              <div class="overview-metric">
+                <span>Cancelled</span>
+                <strong id="overview-cancelled">0</strong>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <section class="calendar-view" id="calendar-view" hidden aria-labelledby="calendar-title">
+      <div class="panel calendar-panel">
+        <div class="calendar-header">
+          <h2 class="calendar-title" id="calendar-title">May 2026</h2>
+          <button class="button secondary" type="button" id="orders-view-button">Orders</button>
+        </div>
+        <div class="calendar-grid" id="calendar-grid" aria-label="May 2026 order calendar"></div>
+      </div>
+    </section>
+
+    <aside class="panel filter-panel" id="search-panel" aria-label="Order search filters" aria-hidden="true">
+      <div class="filters" aria-label="Order filters">
+        <div class="field">
+          <label for="search-filter">Search</label>
+          <input type="search" id="search-filter" placeholder="Order, customer, flavor, decor">
+        </div>
+        <div class="field">
+          <label for="status-filter">Status</label>
+          <select id="status-filter">
+            <option value="">All statuses</option>
+            <option value="inquiry">Inquiry</option>
+            <option value="quote">Quote</option>
+            <option value="booked">Booked</option>
+            <option value="baked">Baked</option>
+            <option value="filled">Filled</option>
+            <option value="frosted">Frosted</option>
+            <option value="decorated">Decorated</option>
+            <option value="delivered">Delivered</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="date-from-filter">From</label>
+          <input type="date" id="date-from-filter">
+        </div>
+        <div class="field">
+          <label for="date-to-filter">To</label>
+          <input type="date" id="date-to-filter">
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <div class="modal-overlay" id="order-modal-overlay" aria-hidden="true">
+    <section class="order-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-toolbar">
+        <h2 id="modal-title">Edit Order</h2>
+        <div class="modal-actions">
+          <button class="button secondary" type="button" id="modal-close">Close</button>
+          <button class="button" type="button" id="modal-save">Save placeholder edits</button>
+        </div>
+      </div>
+
+      <div class="sheet-scroll">
+        <form class="blue-sheet" id="order-sheet-form" action="javascript:void(0);">
+          <div class="sheet-header">
+            <div>
+              <div class="sheet-brand">CAKE SUPPLY</div>
+              <div class="sheet-customer">
+                <div class="sheet-customer-name">
+                  <input class="sheet-input" id="modal-customer-name" aria-label="Customer name">
+                </div>
+                <input class="sheet-small-input" id="modal-customer-phone" aria-label="Customer phone">
+                <input class="sheet-small-input" id="modal-order-number" aria-label="Order number">
+                <label class="sr-only" for="modal-pickup-delivery">Pickup or delivery window</label>
+                <input class="sheet-small-input" id="modal-pickup-delivery">
+              </div>
+            </div>
+
+            <div class="sheet-meta">
+              <input class="sheet-small-input sheet-promise" id="modal-event-display" aria-label="Event date and time">
+              <select class="sheet-select sheet-status" id="modal-fulfillment" aria-label="Fulfillment method">
+                <option>Pickup</option>
+                <option>Delivery</option>
+              </select>
+              <div class="sheet-meta-row">
+                <label for="modal-date-ordered">Date Ordered:</label>
+                <input class="sheet-small-input" id="modal-date-ordered">
+              </div>
+              <div class="sheet-meta-row">
+                <label for="modal-taken-by">Taken By:</label>
+                <input class="sheet-small-input" id="modal-taken-by">
+              </div>
+              <div class="sheet-meta-row">
+                <label for="modal-status">Status:</label>
+                <select class="sheet-select" id="modal-status">
+                  <option value="inquiry">Inquiry</option>
+                  <option value="quote">Quote</option>
+                  <option value="booked">Booked</option>
+                  <option value="baked">Baked</option>
+                  <option value="filled">Filled</option>
+                  <option value="frosted">Frosted</option>
+                  <option value="decorated">Decorated</option>
+                  <option value="delivered">Delivered</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="sheet-contact-row">
+            <div></div>
+            <div class="sheet-contact-right">
+              <input class="sheet-small-input" id="modal-address-name" aria-label="Address customer name">
+              <input class="sheet-small-input" id="modal-address-line" aria-label="Street address">
+              <input class="sheet-small-input" id="modal-address-city" aria-label="City state zip">
+              <input class="sheet-small-input" id="modal-address-phone" aria-label="Address phone">
+            </div>
+          </div>
+
+          <div class="sheet-table-head">
+            <span>Quantity</span>
+            <span>Description</span>
+            <span>Price</span>
+            <span>Total</span>
+          </div>
+          <div class="sheet-items">
+            <div class="sheet-item-row">
+              <input class="sheet-small-input" id="modal-quantity" aria-label="Quantity">
+              <div class="sheet-description">
+                <input class="sheet-input" id="modal-cake-details" aria-label="Cake details">
+                <textarea class="sheet-textarea" id="modal-description" aria-label="Flavor decor and notes"></textarea>
+              </div>
+              <input class="sheet-small-input sheet-price" id="modal-price" aria-label="Price">
+              <input class="sheet-small-input sheet-total" id="modal-line-total" aria-label="Line total">
+            </div>
+          </div>
+
+          <div class="sheet-totals">
+            <div class="sheet-policy">* 4 Days Advance Notice Is Required For Any Changes Or Cancellations To An Existing Order.</div>
+            <div class="sheet-total-row"><span>Discount</span><input class="sheet-small-input" id="modal-discount"></div>
+            <div class="sheet-total-row"><span>Subtotal</span><input class="sheet-small-input" id="modal-subtotal"></div>
+            <div class="sheet-total-row"><span>Tax</span><input class="sheet-small-input" id="modal-tax"></div>
+            <div class="sheet-total-row"><span>Delivery Charge</span><input class="sheet-small-input" id="modal-delivery-charge"></div>
+            <div class="sheet-total-row"><strong>Total</strong><input class="sheet-small-input" id="modal-total"></div>
+            <div class="sheet-total-row"><strong>Amount paid:</strong><input class="sheet-small-input" id="modal-amount-paid"></div>
+            <div class="sheet-total-row"><strong>Balance due:</strong><input class="sheet-small-input" id="modal-balance-due"></div>
+          </div>
+
+          <div class="sheet-footer">
+            <span>Cake Customer</span>
+            <span id="modal-date-required">Date Required</span>
+            <span id="modal-printed">Printed</span>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const ordersBody = document.getElementById("orders-body");
+    const rows = Array.from(ordersBody.querySelectorAll("tr.has-progress"));
+    const searchFilter = document.getElementById("search-filter");
+    const statusFilter = document.getElementById("status-filter");
+    const dateFromFilter = document.getElementById("date-from-filter");
+    const dateToFilter = document.getElementById("date-to-filter");
+    const emptyState = document.getElementById("empty-state");
+    const visibleCount = document.getElementById("visible-count");
+    const productionStatuses = new Set(["baked", "filled", "frosted", "decorated"]);
+    const ORDER_PROGRESS_STEPS = [
+      { value: "inquiry", label: "Inquiry" },
+      { value: "quote", label: "Quote" },
+      { value: "booked", label: "Booked" },
+      { value: "baked", label: "Baked" },
+      { value: "filled", label: "Filled" },
+      { value: "frosted", label: "Frosted" },
+      { value: "decorated", label: "Decorated" },
+      { value: "delivered", label: "Delivered" }
+    ];
+    const dashboardToggle = document.getElementById("dashboard-toggle");
+    const searchToggle = document.getElementById("search-toggle");
+    const searchPanel = document.getElementById("search-panel");
+    const modalOverlay = document.getElementById("order-modal-overlay");
+    const calendarToggle = document.getElementById("calendar-toggle");
+    const ordersView = document.getElementById("orders-view");
+    const calendarView = document.getElementById("calendar-view");
+    const ordersViewButton = document.getElementById("orders-view-button");
+    const calendarGrid = document.getElementById("calendar-grid");
+    const modalClose = document.getElementById("modal-close");
+    const modalSave = document.getElementById("modal-save");
+    const modalFields = {
+      customerName: document.getElementById("modal-customer-name"),
+      customerPhone: document.getElementById("modal-customer-phone"),
+      orderNumber: document.getElementById("modal-order-number"),
+      pickupDelivery: document.getElementById("modal-pickup-delivery"),
+      eventDisplay: document.getElementById("modal-event-display"),
+      fulfillment: document.getElementById("modal-fulfillment"),
+      dateOrdered: document.getElementById("modal-date-ordered"),
+      takenBy: document.getElementById("modal-taken-by"),
+      status: document.getElementById("modal-status"),
+      addressName: document.getElementById("modal-address-name"),
+      addressLine: document.getElementById("modal-address-line"),
+      addressCity: document.getElementById("modal-address-city"),
+      addressPhone: document.getElementById("modal-address-phone"),
+      quantity: document.getElementById("modal-quantity"),
+      cakeDetails: document.getElementById("modal-cake-details"),
+      description: document.getElementById("modal-description"),
+      price: document.getElementById("modal-price"),
+      lineTotal: document.getElementById("modal-line-total"),
+      discount: document.getElementById("modal-discount"),
+      subtotal: document.getElementById("modal-subtotal"),
+      tax: document.getElementById("modal-tax"),
+      deliveryCharge: document.getElementById("modal-delivery-charge"),
+      total: document.getElementById("modal-total"),
+      amountPaid: document.getElementById("modal-amount-paid"),
+      balanceDue: document.getElementById("modal-balance-due")
+    };
+    const modalDateRequired = document.getElementById("modal-date-required");
+    const modalPrinted = document.getElementById("modal-printed");
+    let activeOrderRow = null;
+
+    function normalizeStatusValue(status) {
+      if (status === "quoted") return "quote";
+      if (status === "completed") return "delivered";
+      return status || "inquiry";
+    }
+
+    function setStats() {
+      const counts = rows.reduce((summary, row) => {
+        const status = normalizeStatusValue(row.dataset.status);
+        summary.total += 1;
+        summary[status] = (summary[status] || 0) + 1;
+        if (productionStatuses.has(status)) summary.production += 1;
+        if (status === "delivered") summary.completed += 1;
+        return summary;
+      }, { total: 0, inquiry: 0, quote: 0, booked: 0, production: 0, completed: 0 });
+
+      document.getElementById("overview-today").textContent = counts.total;
+      document.getElementById("overview-pending").textContent = counts.total - counts.completed;
+      document.getElementById("overview-delivered").textContent = counts.completed || 0;
+      document.getElementById("overview-cancelled").textContent = 0;
+    }
+
+    function renderOrderProgress(row) {
+      const status = normalizeStatusValue(row.dataset.status);
+      const currentIndex = Math.max(0, ORDER_PROGRESS_STEPS.findIndex((step) => step.value === status));
+      let progressRow = row.nextElementSibling;
+      if (!progressRow?.classList.contains("progress-row")) {
+        progressRow = document.createElement("tr");
+        progressRow.className = "progress-row";
+        const spacer = document.createElement("td");
+        spacer.className = "progress-row-spacer";
+        spacer.setAttribute("aria-hidden", "true");
+        const progressCell = document.createElement("td");
+        progressCell.className = "progress-row-main";
+        progressCell.colSpan = 8;
+        progressRow.append(spacer, progressCell);
+        row.after(progressRow);
+      }
+      const cell = progressRow.querySelector(".progress-row-main");
+      if (!cell) return;
+      cell.innerHTML = "";
+
+      const progress = document.createElement("div");
+      progress.className = "order-progress";
+      progress.setAttribute("aria-label", `Order progress: ${ORDER_PROGRESS_STEPS[currentIndex].label}`);
+
+      ORDER_PROGRESS_STEPS.forEach((step, index) => {
+        const item = document.createElement("div");
+        item.className = "order-progress-step";
+        if (index < currentIndex) item.classList.add("is-complete");
+        if (index === currentIndex) item.classList.add("is-current");
+        const label = document.createElement("span");
+        label.textContent = step.label;
+        item.appendChild(label);
+        progress.appendChild(item);
+      });
+
+      cell.appendChild(progress);
+    }
+
+    function renderAllOrderProgress() {
+      rows.forEach(renderOrderProgress);
+    }
+
+    function filterRows() {
+      let shown = 0;
+
+      rows.forEach((row) => {
+        const shouldShow = rowMatchesFilters(row);
+
+        row.hidden = !shouldShow;
+        if (row.nextElementSibling?.classList.contains("progress-row")) {
+          row.nextElementSibling.hidden = !shouldShow;
+        }
+        if (shouldShow) shown += 1;
+      });
+
+      if (visibleCount) visibleCount.textContent = `${shown} visible`;
+      emptyState.classList.toggle("is-visible", shown === 0);
+      if (!calendarView.hidden) renderCalendar();
+    }
+
+    function rowMatchesFilters(row) {
+      const search = searchFilter.value.trim().toLowerCase();
+      const status = statusFilter.value;
+      const fromDate = dateFromFilter.value;
+      const toDate = dateToFilter.value;
+      const rowText = row.innerText.toLowerCase();
+      const rowStatus = normalizeStatusValue(row.dataset.status);
+      const eventDate = row.dataset.eventDate;
+      const matchesSearch = !search || rowText.includes(search);
+      const matchesStatus = !status || rowStatus === status;
+      const matchesFrom = !fromDate || eventDate >= fromDate;
+      const matchesTo = !toDate || eventDate <= toDate;
+
+      return matchesSearch && matchesStatus && matchesFrom && matchesTo;
+    }
+
+    function openSearchPanel() {
+      searchPanel.hidden = false;
+      requestAnimationFrame(() => {
+        searchPanel.classList.add("is-open");
+      });
+      searchPanel.setAttribute("aria-hidden", "false");
+      searchToggle.setAttribute("aria-expanded", "true");
+      searchFilter.focus();
+    }
+
+    function closeSearchPanel() {
+      searchPanel.classList.remove("is-open");
+      searchPanel.setAttribute("aria-hidden", "true");
+      searchToggle.setAttribute("aria-expanded", "false");
+      window.setTimeout(() => {
+        if (!searchPanel.classList.contains("is-open")) {
+          searchPanel.hidden = true;
+        }
+      }, 260);
+    }
+
+    function showCalendarView() {
+      closeSearchPanel();
+      ordersView.hidden = true;
+      calendarView.hidden = false;
+      calendarToggle.setAttribute("aria-pressed", "true");
+      calendarToggle.setAttribute("aria-label", "Open orders view");
+      renderCalendar();
+    }
+
+    function showOrdersView() {
+      calendarView.hidden = true;
+      ordersView.hidden = false;
+      calendarToggle.setAttribute("aria-pressed", "false");
+      calendarToggle.setAttribute("aria-label", "Open calendar view");
+    }
+
+    function toggleCalendarView() {
+      if (calendarView.hidden) {
+        showCalendarView();
+      } else {
+        showOrdersView();
+      }
+    }
+
+    function renderCalendar() {
+      const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const year = 2026;
+      const month = 4;
+      const firstDay = new Date(year, month, 1);
+      const startDate = new Date(year, month, 1 - firstDay.getDay());
+      const monthOrders = rows
+        .filter(rowMatchesFilters)
+        .map((row) => ({ row, order: getOrderFromRow(row) }));
+      const dayMap = monthOrders.reduce((map, entry) => {
+        if (!entry.order.eventDate) return map;
+        const entries = map.get(entry.order.eventDate) || [];
+        entries.push(entry);
+        map.set(entry.order.eventDate, entries);
+        return map;
+      }, new Map());
+
+      calendarGrid.innerHTML = "";
+      weekdays.forEach((weekday) => {
+        const heading = document.createElement("div");
+        heading.className = "calendar-weekday";
+        heading.textContent = weekday;
+        calendarGrid.appendChild(heading);
+      });
+
+      for (let index = 0; index < 42; index += 1) {
+        const date = new Date(startDate);
+        date.setDate(startDate.getDate() + index);
+        const dateKey = [
+          date.getFullYear(),
+          String(date.getMonth() + 1).padStart(2, "0"),
+          String(date.getDate()).padStart(2, "0")
+        ].join("-");
+        const day = document.createElement("div");
+        day.className = `calendar-day${date.getMonth() === month ? "" : " is-muted"}`;
+
+        const dateLabel = document.createElement("span");
+        dateLabel.className = "calendar-date";
+        dateLabel.textContent = String(date.getDate());
+        day.appendChild(dateLabel);
+
+        (dayMap.get(dateKey) || []).forEach(({ row, order }) => {
+          const eventButton = document.createElement("button");
+          eventButton.className = "calendar-event";
+          eventButton.type = "button";
+          eventButton.append(document.createTextNode(order.orderName));
+          const customer = document.createElement("span");
+          customer.textContent = order.customerName;
+          eventButton.appendChild(customer);
+          eventButton.addEventListener("click", () => openOrderModal(row));
+          day.appendChild(eventButton);
+        });
+
+        calendarGrid.appendChild(day);
+      }
+    }
+
+    function getCellText(row, index) {
+      return row.cells[index]?.innerText.trim() || "";
+    }
+
+    function formatDateDisplay(dateValue) {
+      if (!dateValue) return "";
+      const date = new Date(`${dateValue}T12:00:00`);
+      return new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric"
+      }).format(date);
+    }
+
+    function formatPrintedStamp(date = new Date()) {
+      return new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "2-digit",
+        hour: "numeric",
+        minute: "2-digit"
+      }).format(date);
+    }
+
+    function parseMoney(text) {
+      const match = String(text || "").match(/-?\$?([\d,]+(?:\.\d{1,2})?)/);
+      return match ? Number(match[1].replace(/,/g, "")) : 0;
+    }
+
+    function formatMoney(value) {
+      return Number(value || 0).toFixed(2);
+    }
+
+    function normalizeStatusLabel(status) {
+      const step = ORDER_PROGRESS_STEPS.find((entry) => entry.value === normalizeStatusValue(status));
+      return step ? step.label : "Inquiry";
+    }
+
+    function statusClass(status) {
+      return `pill status-${normalizeStatusValue(status)}`;
+    }
+
+    function getOrderFromRow(row) {
+      const paymentText = getCellText(row, 7);
+      const depositPaid = parseMoney(paymentText.includes("deposit") ? paymentText.split("\n")[1] : "");
+      const balanceDue = paymentText.includes("balance") ? parseMoney(paymentText.split("\n")[0]) : 0;
+      const total = depositPaid + balanceDue;
+      const fulfillmentCell = getCellText(row, 3);
+      const fulfillment = fulfillmentCell.toLowerCase().includes("delivery") ? "Delivery" : "Pickup";
+      const orderNumber = row.querySelector(".meta")?.textContent.trim() || "#0000";
+      const customerName = row.querySelector(".order-name")?.textContent.trim() || "";
+      const time = getCellText(row, 2);
+
+      return {
+        row,
+        orderName: row.querySelector(".order-name")?.dataset.orderName || "",
+        orderNumber,
+        customerName,
+        customerPhone: "(000-000-0000)",
+        eventDate: row.dataset.eventDate || "",
+        eventDisplay: `${formatDateDisplay(row.dataset.eventDate)} @ ${time}`,
+        pickupDelivery: `${fulfillment}, ${time}`,
+        fulfillment,
+        dateOrdered: "Sat, May 9, 2026",
+        takenBy: "Cakesupply",
+        status: normalizeStatusValue(row.dataset.status),
+        addressLine: fulfillment === "Delivery" ? "Road St." : "",
+        addressCity: fulfillment === "Delivery" ? "City, State, Zip" : "",
+        quantity: "1 Each",
+        cakeDetails: getCellText(row, 4),
+        flavor: getCellText(row, 5),
+        decor: getCellText(row, 6),
+        notes: getCellText(row, 9),
+        price: total || parseMoney(paymentText),
+        discount: 0,
+        tax: 0,
+        deliveryCharge: 0,
+        amountPaid: depositPaid,
+        balanceDue,
+        total: total || balanceDue
+      };
+    }
+
+    function fillModal(order) {
+      const description = [
+        `Flavor/filling/frosting: ${order.flavor || ""}`,
+        `Decor notes: ${order.decor || ""}`,
+        `Internal notes: ${order.notes || ""}`
+      ].join("\n");
+      const subtotal = order.total - order.tax - order.deliveryCharge + order.discount;
+
+      modalFields.customerName.value = order.customerName || "";
+      modalFields.customerPhone.value = order.customerPhone || "(000-000-0000)";
+      modalFields.orderNumber.value = order.orderNumber || "#0000";
+      modalFields.pickupDelivery.value = order.pickupDelivery || "";
+      modalFields.eventDisplay.value = order.eventDisplay || formatDateDisplay(order.eventDate);
+      modalFields.fulfillment.value = order.fulfillment || "Pickup";
+      modalFields.dateOrdered.value = order.dateOrdered || "Sat, May 9, 2026";
+      modalFields.takenBy.value = order.takenBy || "Cakesupply";
+      modalFields.status.value = order.status || "inquiry";
+      modalFields.addressName.value = order.customerName || "Customer name";
+      modalFields.addressLine.value = order.addressLine || "Road St.";
+      modalFields.addressCity.value = order.addressCity || "City, State, Zip";
+      modalFields.addressPhone.value = order.customerPhone || "(000-000-0000)";
+      modalFields.quantity.value = order.quantity || "1 Each";
+      modalFields.cakeDetails.value = order.cakeDetails || "";
+      modalFields.description.value = description;
+      modalFields.price.value = formatMoney(order.price);
+      modalFields.lineTotal.value = formatMoney(order.total);
+      modalFields.discount.value = formatMoney(order.discount);
+      modalFields.subtotal.value = formatMoney(subtotal);
+      modalFields.tax.value = formatMoney(order.tax);
+      modalFields.deliveryCharge.value = formatMoney(order.deliveryCharge);
+      modalFields.total.value = formatMoney(order.total);
+      modalFields.amountPaid.value = formatMoney(order.amountPaid);
+      modalFields.balanceDue.value = formatMoney(order.balanceDue);
+      modalDateRequired.textContent = `Date Required: ${modalFields.eventDisplay.value}`;
+      modalPrinted.textContent = `Printed ${formatPrintedStamp()}`;
+    }
+
+    function openOrderModal(row) {
+      activeOrderRow = row;
+      fillModal(getOrderFromRow(row));
+      modalOverlay.classList.add("is-open");
+      modalOverlay.setAttribute("aria-hidden", "false");
+      modalFields.customerName.focus();
+    }
+
+    function closeOrderModal() {
+      modalOverlay.classList.remove("is-open");
+      modalOverlay.setAttribute("aria-hidden", "true");
+      activeOrderRow = null;
+    }
+
+    function splitDescription(value) {
+      const lines = String(value || "").split("\n");
+      return {
+        flavor: lines.find((line) => line.toLowerCase().startsWith("flavor"))?.split(":").slice(1).join(":").trim() || lines[0] || "",
+        decor: lines.find((line) => line.toLowerCase().startsWith("decor"))?.split(":").slice(1).join(":").trim() || lines[1] || "",
+        notes: lines.find((line) => line.toLowerCase().startsWith("internal"))?.split(":").slice(1).join(":").trim() || lines[2] || ""
+      };
+    }
+
+    function saveModalEdits() {
+      if (!activeOrderRow) return;
+      const description = splitDescription(modalFields.description.value);
+      const status = modalFields.status.value;
+      const balance = parseMoney(modalFields.balanceDue.value);
+      const paid = parseMoney(modalFields.amountPaid.value);
+      const pickupParts = modalFields.pickupDelivery.value.split(",");
+      const fulfillmentLabel = pickupParts[0]?.trim() || modalFields.fulfillment.value || "Pickup";
+      const timeLabel = pickupParts.slice(1).join(",").trim() || modalFields.eventDisplay.value.split("@").pop()?.trim() || "";
+      const addressLabel = fulfillmentLabel.toLowerCase().includes("delivery") ? modalFields.addressLine.value || "Road St." : "&nbsp;";
+
+      activeOrderRow.dataset.status = status;
+      activeOrderRow.querySelector(".meta").textContent = modalFields.orderNumber.value || "#0000";
+      activeOrderRow.querySelector(".order-name").textContent = modalFields.customerName.value;
+      activeOrderRow.cells[2].textContent = timeLabel;
+      activeOrderRow.cells[3].innerHTML = `${fulfillmentLabel}<div class="meta">${addressLabel}</div>`;
+      activeOrderRow.cells[4].textContent = modalFields.cakeDetails.value;
+      activeOrderRow.cells[5].textContent = description.flavor;
+      activeOrderRow.cells[6].textContent = description.decor;
+      activeOrderRow.cells[7].innerHTML = balance > 0
+        ? `<span class="payment-due">$${formatMoney(balance)} balance</span><div class="meta">$${formatMoney(paid)} deposit paid</div>`
+        : `<span class="payment-paid">Paid in full</span><div class="meta">$0 balance</div>`;
+      activeOrderRow.cells[8].textContent = description.notes;
+      renderOrderProgress(activeOrderRow);
+      setStats();
+      filterRows();
+      closeOrderModal();
+    }
+
+    function openBuilderSummary(builderSummary) {
+      activeOrderRow = null;
+      fillModal({
+        orderName: builderSummary.orderName || "Builder Order",
+        orderNumber: builderSummary.orderNumber || "#0000",
+        customerName: builderSummary.customerName || "Customer Name",
+        customerPhone: builderSummary.customerPhone || "(000-000-0000)",
+        eventDate: builderSummary.eventDate || "",
+        eventDisplay: builderSummary.eventDisplay || "",
+        pickupDelivery: builderSummary.pickupDelivery || "Pickup window: XX:XX",
+        fulfillment: builderSummary.fulfillment || "Pickup",
+        dateOrdered: builderSummary.dateOrdered || "Sat, May 9, 2026",
+        takenBy: builderSummary.takenBy || "Cakesupply",
+        status: builderSummary.status || "inquiry",
+        addressLine: builderSummary.addressLine || "Road St.",
+        addressCity: builderSummary.addressCity || "City, State, Zip",
+        quantity: builderSummary.quantity || "1 Each",
+        cakeDetails: builderSummary.cakeDetails || builderSummary.label || "",
+        flavor: builderSummary.flavor || "",
+        decor: builderSummary.decor || "",
+        notes: builderSummary.notes || "",
+        price: Number(builderSummary.price || builderSummary.total || 0),
+        discount: Number(builderSummary.discount || 0),
+        tax: Number(builderSummary.tax || 0),
+        deliveryCharge: Number(builderSummary.deliveryCharge || 0),
+        amountPaid: Number(builderSummary.amountPaid || 0),
+        balanceDue: Number(builderSummary.balanceDue || builderSummary.total || 0),
+        total: Number(builderSummary.total || 0)
+      });
+      modalOverlay.classList.add("is-open");
+      modalOverlay.setAttribute("aria-hidden", "false");
+    }
+
+    [searchFilter, statusFilter, dateFromFilter, dateToFilter].forEach((control) => {
+      control.addEventListener("input", filterRows);
+    });
+
+    searchToggle.addEventListener("click", () => {
+      if (searchPanel.classList.contains("is-open")) {
+        closeSearchPanel();
+      } else {
+        openSearchPanel();
+      }
+    });
+    dashboardToggle.addEventListener("click", () => {
+      closeSearchPanel();
+      showOrdersView();
+    });
+    calendarToggle.addEventListener("click", toggleCalendarView);
+    ordersViewButton.addEventListener("click", showOrdersView);
+    document.addEventListener("pointerdown", (event) => {
+      if (!searchPanel.classList.contains("is-open")) return;
+      if (searchPanel.contains(event.target) || searchToggle.contains(event.target)) return;
+      closeSearchPanel();
+    });
+
+    rows.forEach((row) => {
+      row.querySelector("[data-open-order]").addEventListener("click", () => openOrderModal(row));
+    });
+
+    renderAllOrderProgress();
+    modalClose.addEventListener("click", closeOrderModal);
+    modalSave.addEventListener("click", saveModalEdits);
+    modalOverlay.addEventListener("click", (event) => {
+      if (event.target === modalOverlay) closeOrderModal();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (modalOverlay.classList.contains("is-open")) {
+        closeOrderModal();
+      } else if (searchPanel.classList.contains("is-open")) {
+        closeSearchPanel();
+      }
+    });
+
+    window.CakeSupplyAdmin = {
+      openBuilderSummary
+    };
+
+    setStats();
+    filterRows();
+  </script>
+</body>
+</html>
