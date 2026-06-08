@@ -154,9 +154,38 @@
       color: var(--ink);
     }
 
+    .button.danger {
+      border-color: #8a2f35;
+      background: #8a2f35;
+      color: #fff;
+    }
+
     .button:disabled {
       cursor: not-allowed;
       opacity: 0.58;
+    }
+
+    .admin-message {
+      display: none;
+      margin: 0 0 12px;
+      padding: 9px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .admin-message.is-visible {
+      display: block;
+    }
+
+    .admin-message.is-success {
+      background: #edf6ed;
+      color: #285c2d;
+    }
+
+    .admin-message.is-error {
+      background: #fff0f0;
+      color: #8a2f35;
     }
 
     .icon-button {
@@ -669,6 +698,10 @@
       line-height: 1.1;
     }
 
+    #modal-pickup-delivery {
+      display: none;
+    }
+
     .sheet-meta {
       display: grid;
       gap: 5px;
@@ -692,6 +725,10 @@
       font-size: 14px;
     }
 
+    .sheet-meta-row.is-indented {
+      width: calc(100% - 36px);
+    }
+
     .sheet-meta-row label {
       color: #283342;
       font-size: 14px;
@@ -706,6 +743,27 @@
       gap: 24px;
       min-height: 82px;
       margin-bottom: 14px;
+    }
+
+    .sheet-contact-row[hidden] {
+      display: none;
+    }
+
+    .sheet-item-tools {
+      display: flex;
+      justify-content: flex-end;
+      margin: -2px 0 12px;
+    }
+
+    .add-item-button {
+      min-height: 34px;
+      border: 1px solid rgba(23, 37, 52, 0.2);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.42);
+      color: #24313c;
+      padding: 6px 11px;
+      font-size: 13px;
+      font-weight: 600;
     }
 
     .sheet-contact-right {
@@ -750,6 +808,44 @@
       gap: 8px;
     }
 
+    .sheet-detail-input {
+      min-height: 34px;
+      margin-left: 14px;
+      width: calc(100% - 14px);
+      font-size: 14px;
+      padding-top: 5px;
+      padding-bottom: 5px;
+    }
+
+    .sheet-detail-row {
+      margin-left: 14px;
+      width: calc(100% - 14px);
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      margin-top: -4px;
+    }
+
+    .sheet-detail-row label {
+      color: #24313c;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    .sheet-detail-row select {
+      min-height: 34px;
+      padding-top: 5px;
+      padding-bottom: 5px;
+      font-size: 14px;
+    }
+
+    .sheet-description .sheet-detail-input {
+      margin-top: -4px;
+    }
+
     .sheet-description .sheet-textarea {
       min-height: 76px;
     }
@@ -778,6 +874,10 @@
       font-size: 15px;
     }
 
+    .sheet-total-row.is-derived input {
+      background: #f7f4ef;
+    }
+
     .sheet-total-row strong {
       font-weight: 800;
     }
@@ -803,6 +903,16 @@
 
     .sheet-footer span:last-child {
       text-align: right;
+    }
+
+    .sheet-delete-row {
+      display: flex;
+      justify-content: flex-end;
+      padding: 12px 0 18px;
+    }
+
+    .sheet-delete-row[hidden] {
+      display: none;
     }
 
     .split {
@@ -933,7 +1043,7 @@
       border: 0;
     }
 
-    @media (max-width: 1180px) {
+    @media (max-width: 1320px) {
       .orders-dashboard-layout {
         grid-template-columns: 1fr;
       }
@@ -1027,13 +1137,285 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
+
+    @media print {
+      @page {
+        size: letter;
+        margin: 0.38in;
+      }
+
+      html,
+      body {
+        width: 100%;
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        background: #fff !important;
+        color: #111 !important;
+        font-size: 10.5pt;
+        line-height: 1.25;
+      }
+
+      body * {
+        visibility: hidden !important;
+        box-shadow: none !important;
+        text-shadow: none !important;
+      }
+
+      .modal-overlay,
+      .modal-overlay *,
+      .order-modal,
+      .order-modal *,
+      .blue-sheet,
+      .blue-sheet * {
+        visibility: visible !important;
+      }
+
+      .admin-shell,
+      .admin-topbar,
+      .admin-actions,
+      .orders-dashboard-layout,
+      .orders-main,
+      .overview-panel,
+      .calendar-view,
+      .filter-panel,
+      .admin-message,
+      .modal-toolbar,
+      .modal-actions,
+      .sheet-item-tools,
+      button,
+      .button,
+      .icon-button {
+        display: none !important;
+      }
+
+      .modal-overlay {
+        position: static !important;
+        inset: auto !important;
+        z-index: auto !important;
+        display: block !important;
+        width: 100% !important;
+        min-height: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        overflow: visible !important;
+      }
+
+      .order-modal {
+        width: 100% !important;
+        max-width: none !important;
+        max-height: none !important;
+        display: block !important;
+        overflow: visible !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: #fff !important;
+        color: #111 !important;
+        box-shadow: none !important;
+      }
+
+      .sheet-scroll {
+        overflow: visible !important;
+      }
+
+      .blue-sheet {
+        width: 100% !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        color: #111 !important;
+      }
+
+      .sheet-header {
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 0.22in;
+        margin-bottom: 0.12in;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .sheet-brand {
+        margin-bottom: 0.1in;
+        color: #111 !important;
+        font-size: 12pt;
+        letter-spacing: 0.12em;
+      }
+
+      .sheet-customer {
+        max-width: none;
+        gap: 0.03in;
+      }
+
+      .sheet-customer-name,
+      .sheet-customer-name .sheet-input {
+        font-size: 20pt !important;
+        line-height: 1.05 !important;
+      }
+
+      .sheet-meta {
+        gap: 0.03in;
+      }
+
+      .sheet-promise,
+      .sheet-status {
+        font-size: 12pt !important;
+        line-height: 1.1;
+      }
+
+      .sheet-meta-row,
+      .sheet-meta-row label,
+      .sheet-small-input,
+      .sheet-input,
+      .sheet-textarea,
+      .sheet-select {
+        color: #111 !important;
+        font-size: 9.5pt !important;
+        line-height: 1.2 !important;
+      }
+
+      .sheet-meta-row.is-indented {
+        width: 100%;
+      }
+
+      .sheet-small-input,
+      .sheet-input,
+      .sheet-textarea,
+      .sheet-select {
+        min-height: 0 !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        padding: 0 !important;
+        appearance: none;
+        -webkit-appearance: none;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+
+      .sheet-select {
+        background-image: none !important;
+      }
+
+      .sheet-textarea {
+        min-height: 0.44in !important;
+        resize: none !important;
+        overflow: visible !important;
+      }
+
+      .sheet-contact-row {
+        grid-template-columns: 0.85fr 1.15fr;
+        gap: 0.22in;
+        min-height: 0.56in;
+        margin-bottom: 0.08in;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .sheet-contact-right {
+        width: 100%;
+        max-width: 3.1in;
+        gap: 0.02in;
+      }
+
+      .sheet-table-head,
+      .sheet-item-row {
+        grid-template-columns: 0.9in minmax(0, 1fr) 0.82in 0.82in;
+        gap: 0.14in;
+      }
+
+      .sheet-table-head {
+        padding: 0.06in 0;
+        border-top: 1px solid #333 !important;
+        border-bottom: 1px solid #333 !important;
+        color: #111 !important;
+        font-size: 9.5pt;
+        break-after: avoid;
+        page-break-after: avoid;
+      }
+
+      .sheet-items {
+        min-height: 0 !important;
+      }
+
+      .sheet-item-row {
+        padding: 0.08in 0;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .sheet-description {
+        gap: 0.04in;
+      }
+
+      .sheet-detail-row {
+        grid-template-columns: 0.55in minmax(0, 1fr);
+        gap: 0.06in;
+        margin-left: 0.08in;
+        width: calc(100% - 0.08in);
+        margin-top: 0;
+      }
+
+      .sheet-detail-row label,
+      .sheet-detail-row select,
+      .sheet-description .sheet-detail-input {
+        color: #111 !important;
+        font-size: 8.5pt !important;
+      }
+
+      .sheet-detail-input {
+        min-height: 0 !important;
+        margin-left: 0.08in;
+        width: calc(100% - 0.08in);
+      }
+
+      .sheet-totals {
+        grid-template-columns: minmax(0, 1fr) 2.4in;
+        gap: 0.14in;
+        padding: 0.12in 0 0.18in;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .sheet-policy {
+        max-width: 3.6in;
+        color: #111 !important;
+        font-size: 9pt;
+        line-height: 1.2;
+      }
+
+      .sheet-total-row {
+        grid-template-columns: 1fr 0.86in;
+        gap: 0.08in;
+        color: #111 !important;
+        font-size: 9.5pt;
+      }
+
+      .sheet-total-row.is-derived input {
+        background: transparent !important;
+      }
+
+      .sheet-footer {
+        margin: 0 !important;
+        padding: 0.08in 0 0;
+        border-top: 1px solid #333 !important;
+        color: #111 !important;
+        font-size: 9pt;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .sheet-delete-row {
+        display: none !important;
+      }
+    }
   </style>
 </head>
 <body>
   <main class="admin-shell">
     <header class="admin-topbar">
       <div class="admin-logo-lockup">
-        <img src="primarylogo.jpg" alt="Cake Supply" class="admin-logo">
+        <img src="logo_transparent.png" alt="Cake Supply" class="admin-logo">
       </div>
       <div class="admin-actions">
         <button class="icon-button dashboard-toggle" type="button" id="dashboard-toggle" aria-label="Open main admin dashboard">
@@ -1057,7 +1439,7 @@
             <path d="m16.5 16.5 4 4"></path>
           </svg>
         </button>
-        <button class="button" type="button" disabled title="Connect a private backend before enabling order creation">New order</button>
+        <button class="button" type="button" id="new-order-button">New order</button>
       </div>
     </header>
 
@@ -1066,9 +1448,10 @@
         <div class="orders-main">
           <div class="dashboard-grid">
             <section class="panel" aria-labelledby="orders-heading">
+              <div class="admin-message" id="admin-message" role="status" aria-live="polite"></div>
               <div class="table-wrap">
                 <table>
-            <caption class="sr-only" id="orders-heading">Admin order tracking table with placeholder data</caption>
+            <caption class="sr-only" id="orders-heading">Admin order tracking table</caption>
             <thead>
               <tr>
                 <th scope="col">Customer</th>
@@ -1188,7 +1571,7 @@
             </tbody>
                 </table>
               </div>
-              <div class="empty-state" id="empty-state">No placeholder orders match these filters.</div>
+              <div class="empty-state" id="empty-state">No saved orders match these filters.</div>
             </section>
           </div>
         </div>
@@ -1267,7 +1650,8 @@
         <h2 id="modal-title">Edit Order</h2>
         <div class="modal-actions">
           <button class="button secondary" type="button" id="modal-close">Close</button>
-          <button class="button" type="button" id="modal-save">Save placeholder edits</button>
+          <button class="button secondary" type="button" id="modal-print">Print</button>
+          <button class="button" type="button" id="modal-save">Save Order</button>
         </div>
       </div>
 
@@ -1288,20 +1672,21 @@
             </div>
 
             <div class="sheet-meta">
-              <input class="sheet-small-input sheet-promise" id="modal-event-display" aria-label="Event date and time">
+              <input class="sheet-small-input sheet-promise" id="modal-event-display" aria-label="Event date">
+              <input class="sheet-small-input sheet-promise" id="modal-time-required" aria-label="Time required">
               <select class="sheet-select sheet-status" id="modal-fulfillment" aria-label="Fulfillment method">
                 <option>Pickup</option>
                 <option>Delivery</option>
               </select>
-              <div class="sheet-meta-row">
+              <div class="sheet-meta-row is-indented">
                 <label for="modal-date-ordered">Date Ordered:</label>
                 <input class="sheet-small-input" id="modal-date-ordered">
               </div>
-              <div class="sheet-meta-row">
+              <div class="sheet-meta-row is-indented">
                 <label for="modal-taken-by">Taken By:</label>
                 <input class="sheet-small-input" id="modal-taken-by">
               </div>
-              <div class="sheet-meta-row">
+              <div class="sheet-meta-row is-indented">
                 <label for="modal-status">Status:</label>
                 <select class="sheet-select" id="modal-status">
                   <option value="inquiry">Inquiry</option>
@@ -1327,6 +1712,10 @@
             </div>
           </div>
 
+          <div class="sheet-item-tools">
+            <button class="add-item-button" type="button" id="add-item-button">+ Add Item</button>
+          </div>
+
           <div class="sheet-table-head">
             <span>Quantity</span>
             <span>Description</span>
@@ -1347,13 +1736,23 @@
 
           <div class="sheet-totals">
             <div class="sheet-policy">* 4 Days Advance Notice Is Required For Any Changes Or Cancellations To An Existing Order.</div>
+            <div class="sheet-total-row"><span>Base price</span><input class="sheet-small-input" id="modal-base-price"></div>
+            <div class="sheet-total-row"><span>Flavor upcharges</span><input class="sheet-small-input" id="modal-flavor-upcharges"></div>
+            <div class="sheet-total-row"><span>Filling upcharges</span><input class="sheet-small-input" id="modal-filling-upcharges"></div>
+            <div class="sheet-total-row"><span>Decor upcharges</span><input class="sheet-small-input" id="modal-decor-upcharges"></div>
+            <div class="sheet-total-row"><span>Delivery fee</span><input class="sheet-small-input" id="modal-delivery-fee"></div>
             <div class="sheet-total-row"><span>Discount</span><input class="sheet-small-input" id="modal-discount"></div>
-            <div class="sheet-total-row"><span>Subtotal</span><input class="sheet-small-input" id="modal-subtotal"></div>
-            <div class="sheet-total-row"><span>Tax</span><input class="sheet-small-input" id="modal-tax"></div>
-            <div class="sheet-total-row"><span>Delivery Charge</span><input class="sheet-small-input" id="modal-delivery-charge"></div>
-            <div class="sheet-total-row"><strong>Total</strong><input class="sheet-small-input" id="modal-total"></div>
-            <div class="sheet-total-row"><strong>Amount paid:</strong><input class="sheet-small-input" id="modal-amount-paid"></div>
-            <div class="sheet-total-row"><strong>Balance due:</strong><input class="sheet-small-input" id="modal-balance-due"></div>
+            <div class="sheet-total-row is-derived"><strong>Total price</strong><input class="sheet-small-input" id="modal-total-price"></div>
+            <div class="sheet-total-row"><strong>Deposit paid</strong><input class="sheet-small-input" id="modal-deposit-paid"></div>
+            <div class="sheet-total-row is-derived"><strong>Balance due</strong><input class="sheet-small-input" id="modal-balance-due"></div>
+            <div class="sheet-total-row"><strong>Payment status</strong>
+              <select class="sheet-select" id="modal-payment-status">
+                <option value="Unpaid">Unpaid</option>
+                <option value="Deposit Paid">Deposit Paid</option>
+                <option value="Paid">Paid</option>
+                <option value="Refunded/Cancelled">Refunded/Cancelled</option>
+              </select>
+            </div>
           </div>
 
           <div class="sheet-footer">
@@ -1361,19 +1760,28 @@
             <span id="modal-date-required">Date Required</span>
             <span id="modal-printed">Printed</span>
           </div>
+
+          <div class="sheet-delete-row" id="sheet-delete-row">
+            <button class="button danger" type="button" id="modal-delete">Delete Order</button>
+          </div>
         </form>
       </div>
     </section>
   </div>
 
+  <script src="pricing.js"></script>
   <script>
+    const ORDERS_API_URL = "http://localhost:3000/orders";
+    const BUILDER_ORDER_SUMMARY_KEY = "cake-supply-builder-order-summary";
     const ordersBody = document.getElementById("orders-body");
-    const rows = Array.from(ordersBody.querySelectorAll("tr.has-progress"));
+    let rows = Array.from(ordersBody.querySelectorAll("tr.has-progress"));
     const searchFilter = document.getElementById("search-filter");
     const statusFilter = document.getElementById("status-filter");
     const dateFromFilter = document.getElementById("date-from-filter");
     const dateToFilter = document.getElementById("date-to-filter");
     const emptyState = document.getElementById("empty-state");
+    const adminMessage = document.getElementById("admin-message");
+    const newOrderButton = document.getElementById("new-order-button");
     const visibleCount = document.getElementById("visible-count");
     const productionStatuses = new Set(["baked", "filled", "frosted", "decorated"]);
     const ORDER_PROGRESS_STEPS = [
@@ -1396,37 +1804,48 @@
     const ordersViewButton = document.getElementById("orders-view-button");
     const calendarGrid = document.getElementById("calendar-grid");
     const modalClose = document.getElementById("modal-close");
+    const modalPrint = document.getElementById("modal-print");
     const modalSave = document.getElementById("modal-save");
+    const modalDelete = document.getElementById("modal-delete");
+    const sheetDeleteRow = document.getElementById("sheet-delete-row");
+    const addItemButton = document.getElementById("add-item-button");
     const modalFields = {
       customerName: document.getElementById("modal-customer-name"),
       customerPhone: document.getElementById("modal-customer-phone"),
       orderNumber: document.getElementById("modal-order-number"),
       pickupDelivery: document.getElementById("modal-pickup-delivery"),
       eventDisplay: document.getElementById("modal-event-display"),
+      timeRequired: document.getElementById("modal-time-required"),
       fulfillment: document.getElementById("modal-fulfillment"),
       dateOrdered: document.getElementById("modal-date-ordered"),
       takenBy: document.getElementById("modal-taken-by"),
       status: document.getElementById("modal-status"),
       addressName: document.getElementById("modal-address-name"),
+      contactRow: document.querySelector(".sheet-contact-row"),
       addressLine: document.getElementById("modal-address-line"),
       addressCity: document.getElementById("modal-address-city"),
       addressPhone: document.getElementById("modal-address-phone"),
+      sheetItems: document.querySelector(".sheet-items"),
       quantity: document.getElementById("modal-quantity"),
       cakeDetails: document.getElementById("modal-cake-details"),
       description: document.getElementById("modal-description"),
       price: document.getElementById("modal-price"),
       lineTotal: document.getElementById("modal-line-total"),
+      basePrice: document.getElementById("modal-base-price"),
+      flavorUpcharges: document.getElementById("modal-flavor-upcharges"),
+      fillingUpcharges: document.getElementById("modal-filling-upcharges"),
+      decorUpcharges: document.getElementById("modal-decor-upcharges"),
+      deliveryFee: document.getElementById("modal-delivery-fee"),
       discount: document.getElementById("modal-discount"),
-      subtotal: document.getElementById("modal-subtotal"),
-      tax: document.getElementById("modal-tax"),
-      deliveryCharge: document.getElementById("modal-delivery-charge"),
-      total: document.getElementById("modal-total"),
-      amountPaid: document.getElementById("modal-amount-paid"),
-      balanceDue: document.getElementById("modal-balance-due")
+      totalPrice: document.getElementById("modal-total-price"),
+      depositPaid: document.getElementById("modal-deposit-paid"),
+      balanceDue: document.getElementById("modal-balance-due"),
+      paymentStatus: document.getElementById("modal-payment-status")
     };
     const modalDateRequired = document.getElementById("modal-date-required");
     const modalPrinted = document.getElementById("modal-printed");
     let activeOrderRow = null;
+    let messageTimer = null;
 
     function normalizeStatusValue(status) {
       if (status === "quoted") return "quote";
@@ -1490,6 +1909,24 @@
 
     function renderAllOrderProgress() {
       rows.forEach(renderOrderProgress);
+    }
+
+    function showAdminMessage(message, type = "success") {
+      window.clearTimeout(messageTimer);
+      adminMessage.textContent = message;
+      adminMessage.className = `admin-message is-visible is-${type}`;
+      if (type === "success") {
+        messageTimer = window.setTimeout(() => {
+          adminMessage.className = "admin-message";
+          adminMessage.textContent = "";
+        }, 2800);
+      }
+    }
+
+    function clearAdminMessage() {
+      window.clearTimeout(messageTimer);
+      adminMessage.className = "admin-message";
+      adminMessage.textContent = "";
     }
 
     function filterRows() {
@@ -1662,6 +2099,441 @@
       return Number(value || 0).toFixed(2);
     }
 
+    function numberOrZero(value) {
+      const number = Number(value);
+      return Number.isFinite(number) ? number : 0;
+    }
+
+    function normalizeQuantity(value) {
+      return String(value || "1").replace(/\s*Each\b/i, "").trim() || "1";
+    }
+
+    function getTotalPriceFromOrder(order) {
+      return numberOrZero(order.totalPrice || order.total || order.lineTotal || order.price);
+    }
+
+    function getDepositPaidFromOrder(order) {
+      return numberOrZero(order.depositPaid || order.amountPaid);
+    }
+
+    function derivePaymentStatus(totalPrice, depositPaid, balanceDue, fallbackStatus = "") {
+      if (fallbackStatus === "Refunded/Cancelled") return fallbackStatus;
+      if (totalPrice <= 0 && depositPaid <= 0) return fallbackStatus || "Unpaid";
+      if (balanceDue <= 0 && depositPaid > 0) return "Paid";
+      if (depositPaid > 0) return "Deposit Paid";
+      return "Unpaid";
+    }
+
+    function getOrderPriceFields(order = {}) {
+      const basePrice = numberOrZero(order.basePrice || order.price);
+      const flavorUpcharges = numberOrZero(order.flavorUpcharges);
+      const fillingUpcharges = numberOrZero(order.fillingUpcharges);
+      const decorUpcharges = numberOrZero(order.decorUpcharges);
+      const deliveryFee = numberOrZero(order.deliveryFee || order.deliveryCharge);
+      const discount = numberOrZero(order.discount);
+      const totalPrice = order.totalPrice !== undefined
+        ? numberOrZero(order.totalPrice)
+        : getTotalPriceFromOrder(order) || Math.max(basePrice + flavorUpcharges + fillingUpcharges + decorUpcharges + deliveryFee - discount, 0);
+      const depositPaid = getDepositPaidFromOrder(order);
+      const balanceDue = order.balanceDue !== undefined
+        ? numberOrZero(order.balanceDue)
+        : Math.max(totalPrice - depositPaid, 0);
+      const paymentStatus = order.paymentStatus || derivePaymentStatus(totalPrice, depositPaid, balanceDue);
+
+      return {
+        basePrice,
+        flavorUpcharges,
+        fillingUpcharges,
+        decorUpcharges,
+        deliveryFee,
+        discount,
+        depositPaid,
+        balanceDue,
+        totalPrice,
+        paymentStatus
+      };
+    }
+
+    function getBasePriceForCakeDetails(value) {
+      const details = String(value || "").toLowerCase();
+      const prices = window.CakeSupplyPricing?.baseCakePrices || {};
+
+      if (details.includes("1/4") || details.includes("quarter")) return prices["1/4 sheet cake"] || 0;
+      if (details.includes("1/2") || details.includes("half")) return prices["1/2 sheet cake"] || 0;
+      if (details.includes("full") && details.includes("sheet")) return prices["full sheet cake"] || 0;
+
+      const roundSize = details.match(/(?:^|\D)(6|8|10|12|14)\s*(?:"|in\b|inch\b)/)?.[1];
+      return roundSize ? prices[`${roundSize}" cake`] || 0 : 0;
+    }
+
+    function syncBasePriceFromCakeDetails() {
+      const basePrice = getBasePriceForCakeDetails(modalFields.cakeDetails.value);
+      if (!basePrice) return;
+
+      modalFields.basePrice.value = formatMoney(basePrice);
+      syncPaymentFields();
+    }
+
+    function syncDeliveryLocationVisibility() {
+      const isDelivery = modalFields.fulfillment.value.toLowerCase() === "delivery";
+      modalFields.contactRow.hidden = !isDelivery;
+    }
+
+    function normalizeOrderItems(order = {}) {
+      if (Array.isArray(order.orderItems) && order.orderItems.length) {
+        return order.orderItems.map((item) => ({
+          quantity: normalizeQuantity(item.quantity),
+          label: item.label || item.cakeDetails || "",
+          flavor: item.flavor || "",
+          frosting: item.frosting || "",
+          filling: item.filling || "",
+          decor: item.decor || "",
+          basePrice: numberOrZero(item.basePrice || item.price),
+          flavorUpcharges: numberOrZero(item.flavorUpcharges),
+          fillingUpcharges: numberOrZero(item.fillingUpcharges),
+          decorUpcharges: numberOrZero(item.decorUpcharges),
+          totalPrice: numberOrZero(item.totalPrice || item.total || item.basePrice || item.price)
+        }));
+      }
+
+      if (Array.isArray(order.selections) && order.selections.length) {
+        return order.selections.map((selection) => {
+          const label = selection.label || "";
+          const basePrice = getBasePriceForCakeDetails(label);
+
+          return {
+            quantity: "1",
+            label,
+            flavor: selection.flavor || "",
+            frosting: selection.frosting || "",
+            filling: selection.filling || "",
+            decor: selection.decor || "",
+            basePrice,
+            flavorUpcharges: 0,
+            fillingUpcharges: 0,
+            decorUpcharges: 0,
+            totalPrice: basePrice
+          };
+        });
+      }
+
+      const description = splitDescription(order.description);
+      const priceFields = getOrderPriceFields(order);
+      const legacyDetails = splitLegacyFlavorDetails(order.flavor || description.flavor || "");
+      return [{
+        quantity: normalizeQuantity(order.quantity),
+        label: order.cakeDetails || order.orderName || "",
+        flavor: legacyDetails.flavor,
+        frosting: order.frosting || legacyDetails.frosting,
+        filling: order.filling || legacyDetails.filling,
+        decor: order.decor || description.decor || "",
+        basePrice: priceFields.basePrice,
+        flavorUpcharges: priceFields.flavorUpcharges,
+        fillingUpcharges: priceFields.fillingUpcharges,
+        decorUpcharges: priceFields.decorUpcharges,
+        totalPrice: priceFields.totalPrice
+      }];
+    }
+
+    function renderSheetItems(order) {
+      const items = normalizeOrderItems(order);
+      modalFields.sheetItems.innerHTML = "";
+
+      items.forEach((item, index) => {
+        const row = document.createElement("div");
+        row.className = "sheet-item-row";
+        row.dataset.index = String(index);
+
+        row.innerHTML = `
+          <input class="sheet-small-input item-quantity" ${index === 0 ? 'id="modal-quantity"' : ""} aria-label="Quantity">
+          <div class="sheet-description">
+            <input class="sheet-input item-label" ${index === 0 ? 'id="modal-cake-details"' : ""} aria-label="Cake details">
+            <div class="sheet-detail-row">
+              <label>Flavor</label>
+              <select class="sheet-select item-flavor" aria-label="Flavor"></select>
+            </div>
+            <div class="sheet-detail-row">
+              <label>Frosting</label>
+              <select class="sheet-select item-frosting" aria-label="Frosting"></select>
+            </div>
+            <div class="sheet-detail-row">
+              <label>Filling</label>
+              <select class="sheet-select item-filling" aria-label="Filling"></select>
+            </div>
+          </div>
+          <input class="sheet-small-input sheet-price item-price" ${index === 0 ? 'id="modal-price"' : ""} aria-label="Price">
+          <input class="sheet-small-input sheet-total item-total" ${index === 0 ? 'id="modal-line-total"' : ""} aria-label="Line total">
+        `;
+
+        row.querySelector(".item-quantity").value = normalizeQuantity(item.quantity);
+        row.querySelector(".item-label").value = item.label || "";
+        populateDetailSelect(row.querySelector(".item-flavor"), "flavor", item.flavor || "");
+        populateDetailSelect(row.querySelector(".item-frosting"), "frosting", item.frosting || "");
+        populateDetailSelect(row.querySelector(".item-filling"), "filling", item.filling || "");
+        row.querySelector(".item-price").value = formatMoney(item.basePrice);
+        row.querySelector(".item-total").value = formatMoney(item.totalPrice || item.basePrice);
+
+        modalFields.sheetItems.appendChild(row);
+      });
+
+      modalFields.quantity = document.getElementById("modal-quantity");
+      modalFields.cakeDetails = document.getElementById("modal-cake-details");
+      modalFields.price = document.getElementById("modal-price");
+      modalFields.lineTotal = document.getElementById("modal-line-total");
+      modalFields.description = null;
+      attachSheetItemHandlers();
+    }
+
+    function cleanDetailPrefix(value, prefix) {
+      return String(value || "").replace(new RegExp(`^${prefix}:\\s*`, "i"), "").trim();
+    }
+
+    function normalizeLegacyChoice(value) {
+      const normalized = String(value || "").trim();
+      const lower = normalized.toLowerCase();
+      if (lower === "chocolate bc") return "Chocolate Buttercream";
+      if (lower === "white bc") return "Vanilla Buttercream";
+      return normalized;
+    }
+
+    function splitLegacyFlavorDetails(value) {
+      const parts = String(value || "")
+        .split("/")
+        .map((part) => normalizeLegacyChoice(part))
+        .filter(Boolean);
+
+      return {
+        flavor: parts[0] || "",
+        frosting: parts[1] || "",
+        filling: parts[2] || ""
+      };
+    }
+
+    function getOptionList(type) {
+      const pricing = window.CakeSupplyPricing || {};
+      if (type === "flavor") {
+        return pricing.flavorOptions || ["Almond", "Chocolate", "Coconut", "Lemon", "Marble", "Spice", "Vanilla"];
+      }
+      if (type === "frosting") {
+        return pricing.frostingOptions || [
+          "Chocolate Buttercream",
+          "Chocolate Mousse",
+          "Cinnamon Honey Buttercream",
+          "Coconut Cream Buttercream",
+          "Coffee Buttercream",
+          "Cranberry Buttercream",
+          "Cream Cheese",
+          "Horchata Buttercream",
+          "Lemon Buttercream",
+          "Oreo Buttercream",
+          "Raspberry Buttercream",
+          "Strawberry Cream Cheese",
+          "Vanilla Buttercream",
+          "White Chocolate Ganache"
+        ];
+      }
+      return pricing.fillingOptions || [
+        "Apple Pie Filling",
+        "Blackberry Puree",
+        "Blueberry Puree",
+        "Chocolate Mousse",
+        "Cinnamon Sugar Ganache",
+        "Dulce De Leche",
+        "Key Lime Curd",
+        "Lemon Curd",
+        "Mixed Berry Jam",
+        "Orange Marmalade",
+        "Passionfruit Curd",
+        "Raspberry Puree",
+        "Strawberry Puree",
+        "Vanilla Custard",
+        "White Chocolate Ganache"
+      ];
+    }
+
+    function getOptionPriceMap(type) {
+      const pricing = window.CakeSupplyPricing || {};
+      if (type === "flavor") return pricing.flavorPrices || {};
+      if (type === "frosting") return pricing.frostingPrices || {};
+      return pricing.fillingPrices || {};
+    }
+
+    function getOptionLabel(type, optionValue) {
+      const price = getOptionPriceMap(type)[optionValue] || 0;
+      return price > 0 ? `${optionValue} (+$${formatMoney(price)})` : optionValue;
+    }
+
+    function populateDetailSelect(select, type, value) {
+      const currentValue = normalizeLegacyChoice(cleanDetailPrefix(value, type));
+      select.innerHTML = "";
+
+      const emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = `Select ${type}`;
+      select.appendChild(emptyOption);
+
+      const options = getOptionList(type);
+      if (currentValue && !options.includes(currentValue)) {
+        const customOption = document.createElement("option");
+        customOption.value = currentValue;
+        customOption.textContent = currentValue;
+        select.appendChild(customOption);
+      }
+
+      options.forEach((optionValue) => {
+        const option = document.createElement("option");
+        option.value = optionValue;
+        option.textContent = getOptionLabel(type, optionValue);
+        select.appendChild(option);
+      });
+
+      select.value = currentValue;
+    }
+
+    function getDetailUpcharge(type, value) {
+      const pricing = window.CakeSupplyPricing || {};
+      if (type === "flavor") return numberOrZero(pricing.flavorPrices?.[value]);
+      if (type === "frosting") return numberOrZero(pricing.frostingPrices?.[value]);
+      return numberOrZero(pricing.fillingPrices?.[value]);
+    }
+
+    function collectSheetItems() {
+      return Array.from(modalFields.sheetItems.querySelectorAll(".sheet-item-row")).map((row) => ({
+        quantity: normalizeQuantity(row.querySelector(".item-quantity")?.value),
+        label: row.querySelector(".item-label")?.value || "",
+        flavor: row.querySelector(".item-flavor")?.value || "",
+        frosting: row.querySelector(".item-frosting")?.value || "",
+        filling: row.querySelector(".item-filling")?.value || "",
+        basePrice: parseMoney(row.querySelector(".item-price")?.value),
+        flavorUpcharges: getDetailUpcharge("flavor", row.querySelector(".item-flavor")?.value || ""),
+        fillingUpcharges: getDetailUpcharge("filling", row.querySelector(".item-filling")?.value || ""),
+        decorUpcharges: getDetailUpcharge("frosting", row.querySelector(".item-frosting")?.value || ""),
+        totalPrice: parseMoney(row.querySelector(".item-total")?.value)
+      }));
+    }
+
+    function syncPriceTotalsFromSheetItems() {
+      const items = collectSheetItems();
+      const basePrice = items.reduce((total, item) => total + numberOrZero(item.basePrice), 0);
+      const flavorUpcharges = items.reduce((total, item) => total + numberOrZero(item.flavorUpcharges), 0);
+      const fillingUpcharges = items.reduce((total, item) => total + numberOrZero(item.fillingUpcharges), 0);
+      const decorUpcharges = items.reduce((total, item) => total + numberOrZero(item.decorUpcharges), 0);
+      const itemTotal = items.reduce((total, item) => total + numberOrZero(item.totalPrice), 0);
+      const totalPrice = itemTotal + parseMoney(modalFields.deliveryFee.value) - parseMoney(modalFields.discount.value);
+
+      modalFields.basePrice.value = formatMoney(basePrice);
+      modalFields.flavorUpcharges.value = formatMoney(flavorUpcharges);
+      modalFields.fillingUpcharges.value = formatMoney(fillingUpcharges);
+      modalFields.decorUpcharges.value = formatMoney(decorUpcharges);
+      modalFields.totalPrice.value = formatMoney(totalPrice);
+      syncBalanceFromTotal();
+    }
+
+    function syncSheetItemTotal(row) {
+      const basePrice = parseMoney(row.querySelector(".item-price")?.value);
+      const flavorUpcharge = getDetailUpcharge("flavor", row.querySelector(".item-flavor")?.value || "");
+      const frostingUpcharge = getDetailUpcharge("frosting", row.querySelector(".item-frosting")?.value || "");
+      const fillingUpcharge = getDetailUpcharge("filling", row.querySelector(".item-filling")?.value || "");
+      row.querySelector(".item-total").value = formatMoney(basePrice + flavorUpcharge + frostingUpcharge + fillingUpcharge);
+      syncPriceTotalsFromSheetItems();
+    }
+
+    function syncSheetItemPriceFromLabel(row) {
+      const labelInput = row.querySelector(".item-label");
+      const priceInput = row.querySelector(".item-price");
+      const totalInput = row.querySelector(".item-total");
+      const basePrice = getBasePriceForCakeDetails(labelInput?.value);
+      if (!basePrice) return;
+
+      priceInput.value = formatMoney(basePrice);
+      syncSheetItemTotal(row);
+    }
+
+    function attachSheetItemHandlers() {
+      modalFields.sheetItems.querySelectorAll(".sheet-item-row").forEach((row) => {
+        row.querySelector(".item-label")?.addEventListener("input", () => syncSheetItemPriceFromLabel(row));
+        row.querySelector(".item-label")?.addEventListener("blur", () => syncSheetItemPriceFromLabel(row));
+        row.querySelector(".item-price")?.addEventListener("input", () => {
+          syncSheetItemTotal(row);
+        });
+        row.querySelector(".item-total")?.addEventListener("input", syncPriceTotalsFromSheetItems);
+        row.querySelector(".item-flavor")?.addEventListener("change", () => syncSheetItemTotal(row));
+        row.querySelector(".item-frosting")?.addEventListener("change", () => syncSheetItemTotal(row));
+        row.querySelector(".item-filling")?.addEventListener("change", () => syncSheetItemTotal(row));
+      });
+    }
+
+    function addSheetItem(item = {}) {
+      const existingItems = collectSheetItems();
+      existingItems.push({
+        quantity: normalizeQuantity(item.quantity),
+        label: item.label || "",
+        flavor: item.flavor || "",
+        frosting: item.frosting || "",
+        filling: item.filling || "",
+        decor: item.decor || "",
+        basePrice: numberOrZero(item.basePrice),
+        totalPrice: numberOrZero(item.totalPrice || item.basePrice)
+      });
+
+      renderSheetItems({ orderItems: existingItems });
+      syncPriceTotalsFromSheetItems();
+      modalFields.sheetItems.querySelector(".sheet-item-row:last-child .item-label")?.focus();
+    }
+
+    function cleanOrderLabel(value) {
+      return String(value || "").trim();
+    }
+
+    function getOrderDateLabel(order) {
+      if (order.eventDate) return formatDateDisplay(order.eventDate);
+      return cleanOrderLabel(order.eventDisplay).split("@")[0].trim();
+    }
+
+    function getOrderTimeLabel(order) {
+      const explicitTime = cleanOrderLabel(order.time);
+      if (explicitTime && !["pickup", "delivery"].includes(explicitTime.toLowerCase())) {
+        return explicitTime;
+      }
+
+      const eventTime = cleanOrderLabel(order.eventDisplay).split("@").slice(1).join("@").trim();
+      if (eventTime && !["pickup", "delivery"].includes(eventTime.toLowerCase())) {
+        return eventTime;
+      }
+
+      const pickupParts = cleanOrderLabel(order.pickupDelivery).split(",");
+      const pickupTime = pickupParts.slice(1).join(",").trim();
+      if (pickupTime && !["pickup", "delivery"].includes(pickupTime.toLowerCase())) {
+        return pickupTime;
+      }
+
+      return "";
+    }
+
+    function getModalEventDisplay(order) {
+      return getOrderDateLabel(order);
+    }
+
+    function getModalPickupDelivery(order) {
+      const fulfillment = order.fulfillment || "Pickup";
+      const timeLabel = getOrderTimeLabel(order);
+      return [fulfillment, timeLabel].filter(Boolean).join(", ");
+    }
+
+    function parseEventDate(value) {
+      const directDate = String(value || "").match(/\d{4}-\d{2}-\d{2}/)?.[0];
+      if (directDate) return directDate;
+
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return "";
+
+      return [
+        parsed.getFullYear(),
+        String(parsed.getMonth() + 1).padStart(2, "0"),
+        String(parsed.getDate()).padStart(2, "0")
+      ].join("-");
+    }
+
     function normalizeStatusLabel(status) {
       const step = ORDER_PROGRESS_STEPS.find((entry) => entry.value === normalizeStatusValue(status));
       return step ? step.label : "Inquiry";
@@ -1672,10 +2544,21 @@
     }
 
     function getOrderFromRow(row) {
+      if (row.dataset.order) {
+        try {
+          return normalizeOrder(JSON.parse(row.dataset.order));
+        } catch (error) {
+          console.warn("Unable to read saved row order", error);
+        }
+      }
+
       const paymentText = getCellText(row, 7);
       const depositPaid = parseMoney(paymentText.includes("deposit") ? paymentText.split("\n")[1] : "");
       const balanceDue = paymentText.includes("balance") ? parseMoney(paymentText.split("\n")[0]) : 0;
       const total = depositPaid + balanceDue;
+      const paymentStatus = paymentText.toLowerCase().includes("paid in full")
+        ? "Paid"
+        : derivePaymentStatus(total, depositPaid, balanceDue);
       const fulfillmentCell = getCellText(row, 3);
       const fulfillment = fulfillmentCell.toLowerCase().includes("delivery") ? "Delivery" : "Pickup";
       const orderNumber = row.querySelector(".meta")?.textContent.trim() || "#0000";
@@ -1684,6 +2567,7 @@
 
       return {
         row,
+        orderId: row.dataset.orderId || "",
         orderName: row.querySelector(".order-name")?.dataset.orderName || "",
         orderNumber,
         customerName,
@@ -1697,19 +2581,174 @@
         status: normalizeStatusValue(row.dataset.status),
         addressLine: fulfillment === "Delivery" ? "Road St." : "",
         addressCity: fulfillment === "Delivery" ? "City, State, Zip" : "",
-        quantity: "1 Each",
+        quantity: "1",
         cakeDetails: getCellText(row, 4),
         flavor: getCellText(row, 5),
         decor: getCellText(row, 6),
-        notes: getCellText(row, 9),
+        notes: getCellText(row, 8),
         price: total || parseMoney(paymentText),
+        basePrice: total || parseMoney(paymentText),
+        flavorUpcharges: 0,
+        fillingUpcharges: 0,
+        decorUpcharges: 0,
         discount: 0,
         tax: 0,
         deliveryCharge: 0,
+        deliveryFee: 0,
         amountPaid: depositPaid,
+        depositPaid,
         balanceDue,
-        total: total || balanceDue
+        total: total || balanceDue,
+        totalPrice: total || balanceDue,
+        paymentStatus
       };
+    }
+
+    function normalizeOrder(order = {}, index = 0) {
+      const description = splitDescription(order.description);
+      const priceFields = getOrderPriceFields(order);
+      const total = priceFields.totalPrice;
+      const amountPaid = priceFields.depositPaid;
+      const balanceDue = priceFields.balanceDue;
+      const eventDate = order.eventDate || parseEventDate(order.eventDisplay || order.pickupDelivery);
+      const status = normalizeStatusValue(order.status);
+      const fulfillment = order.fulfillment || (String(order.pickupDelivery || "").toLowerCase().includes("delivery") ? "Delivery" : "Pickup");
+      const normalizedOrder = {
+        ...order,
+        eventDate,
+        eventDisplay: order.eventDisplay || formatDateDisplay(eventDate),
+        fulfillment,
+        time: order.time || getOrderTimeLabel({ ...order, eventDate, fulfillment }),
+        pickupDelivery: order.pickupDelivery || fulfillment
+      };
+
+      return {
+        orderId: order.orderId || "",
+        orderName: order.orderName || order.cakeDetails || `Order ${index + 1}`,
+        orderNumber: order.orderNumber || `#${String(index + 1).padStart(4, "0")}`,
+        customerName: order.customerName || order.name || "Customer",
+        customerPhone: order.customerPhone || "",
+        eventDate,
+        eventDisplay: normalizedOrder.eventDisplay,
+        pickupDelivery: normalizedOrder.pickupDelivery,
+        fulfillment,
+        time: normalizedOrder.time,
+        dateOrdered: order.dateOrdered || "",
+        takenBy: order.takenBy || "Cakesupply",
+        status,
+        addressLine: order.addressLine || "",
+        addressCity: order.addressCity || "",
+        quantity: normalizeQuantity(order.quantity),
+        cakeDetails: order.cakeDetails || "",
+        flavor: order.flavor || description.flavor || "",
+        decor: order.decor || description.decor || "",
+        notes: order.notes || description.notes || "",
+        orderItems: normalizeOrderItems(order),
+        selections: Array.isArray(order.selections) ? order.selections : [],
+        price: priceFields.basePrice,
+        basePrice: priceFields.basePrice,
+        flavorUpcharges: priceFields.flavorUpcharges,
+        fillingUpcharges: priceFields.fillingUpcharges,
+        decorUpcharges: priceFields.decorUpcharges,
+        deliveryFee: priceFields.deliveryFee,
+        discount: priceFields.discount,
+        tax: Number(order.tax || 0),
+        deliveryCharge: priceFields.deliveryFee,
+        amountPaid,
+        depositPaid: amountPaid,
+        balanceDue,
+        total,
+        totalPrice: total,
+        paymentStatus: priceFields.paymentStatus
+      };
+    }
+
+    function createOrderRow(order) {
+      const row = document.createElement("tr");
+      row.className = "has-progress";
+      row.dataset.orderId = order.orderId || "";
+      row.dataset.status = normalizeStatusValue(order.status);
+      row.dataset.eventDate = order.eventDate || "";
+      row.dataset.order = JSON.stringify(order);
+
+      const balanceDue = numberOrZero(order.balanceDue);
+      const amountPaid = numberOrZero(order.depositPaid || order.amountPaid);
+      const paymentStatusLabel = order.paymentStatus || derivePaymentStatus(numberOrZero(order.totalPrice || order.total), amountPaid, balanceDue);
+      const addressLabel = order.fulfillment === "Delivery" ? order.addressLine || "" : "";
+      const eventDisplay = getOrderDateLabel(order);
+      const timeLabel = getOrderTimeLabel(order);
+
+      const customerCell = document.createElement("td");
+      const customerButton = document.createElement("button");
+      customerButton.className = "order-name";
+      customerButton.type = "button";
+      customerButton.dataset.openOrder = "";
+      customerButton.dataset.orderName = order.orderName || "";
+      customerButton.textContent = order.customerName || "Customer";
+      const orderNumber = document.createElement("span");
+      orderNumber.className = "meta";
+      orderNumber.textContent = order.orderNumber || "#0000";
+      customerCell.append(customerButton, orderNumber);
+
+      const dateCell = document.createElement("td");
+      dateCell.textContent = eventDisplay;
+      const timeCell = document.createElement("td");
+      timeCell.textContent = timeLabel || "";
+      const fulfillmentCell = document.createElement("td");
+      fulfillmentCell.append(document.createTextNode(order.fulfillment || "Pickup"));
+      const addressMeta = document.createElement("div");
+      addressMeta.className = "meta";
+      addressMeta.innerHTML = addressLabel ? "" : "&nbsp;";
+      if (addressLabel) addressMeta.textContent = addressLabel;
+      fulfillmentCell.appendChild(addressMeta);
+
+      const cakeCell = document.createElement("td");
+      cakeCell.textContent = order.cakeDetails || "";
+      const flavorCell = document.createElement("td");
+      flavorCell.textContent = order.flavor || "";
+      const decorCell = document.createElement("td");
+      decorCell.textContent = order.decor || "";
+      const paymentCell = document.createElement("td");
+      const paymentStatus = document.createElement("span");
+      paymentStatus.className = paymentStatusLabel === "Paid" ? "payment-paid" : "payment-due";
+      paymentStatus.textContent = paymentStatusLabel;
+      const paymentMeta = document.createElement("div");
+      paymentMeta.className = "meta";
+      paymentMeta.textContent = `$${formatMoney(balanceDue)} balance`;
+      paymentCell.append(paymentStatus, paymentMeta);
+      const notesCell = document.createElement("td");
+      notesCell.textContent = order.notes || "";
+
+      row.append(customerCell, dateCell, timeCell, fulfillmentCell, cakeCell, flavorCell, decorCell, paymentCell, notesCell);
+      row.querySelector("[data-open-order]").addEventListener("click", () => openOrderModal(row));
+      return row;
+    }
+
+    function renderSavedOrders(savedOrders) {
+      ordersBody.innerHTML = "";
+      rows = savedOrders.map((order, index) => createOrderRow(normalizeOrder(order, index)));
+      rows.forEach((row) => ordersBody.appendChild(row));
+      renderAllOrderProgress();
+      setStats();
+      filterRows();
+    }
+
+    async function fetchOrders() {
+      const response = await fetch(ORDERS_API_URL);
+      if (!response.ok) throw new Error("Unable to load orders");
+      const orders = await response.json();
+      return Array.isArray(orders) ? orders : [];
+    }
+
+    async function loadOrders() {
+      try {
+        const savedOrders = await fetchOrders();
+        renderSavedOrders(savedOrders);
+        clearAdminMessage();
+      } catch (error) {
+        renderSavedOrders([]);
+        showAdminMessage("Backend is not running. Start the backend at http://localhost:3000 to load and save orders.", "error");
+      }
     }
 
     function fillModal(order) {
@@ -1718,13 +2757,15 @@
         `Decor notes: ${order.decor || ""}`,
         `Internal notes: ${order.notes || ""}`
       ].join("\n");
-      const subtotal = order.total - order.tax - order.deliveryCharge + order.discount;
+      const priceFields = getOrderPriceFields(order);
+      renderSheetItems(order);
 
       modalFields.customerName.value = order.customerName || "";
       modalFields.customerPhone.value = order.customerPhone || "(000-000-0000)";
       modalFields.orderNumber.value = order.orderNumber || "#0000";
-      modalFields.pickupDelivery.value = order.pickupDelivery || "";
-      modalFields.eventDisplay.value = order.eventDisplay || formatDateDisplay(order.eventDate);
+      modalFields.pickupDelivery.value = getModalPickupDelivery(order);
+      modalFields.eventDisplay.value = getModalEventDisplay(order);
+      modalFields.timeRequired.value = getOrderTimeLabel(order);
       modalFields.fulfillment.value = order.fulfillment || "Pickup";
       modalFields.dateOrdered.value = order.dateOrdered || "Sat, May 9, 2026";
       modalFields.takenBy.value = order.takenBy || "Cakesupply";
@@ -1733,34 +2774,128 @@
       modalFields.addressLine.value = order.addressLine || "Road St.";
       modalFields.addressCity.value = order.addressCity || "City, State, Zip";
       modalFields.addressPhone.value = order.customerPhone || "(000-000-0000)";
-      modalFields.quantity.value = order.quantity || "1 Each";
-      modalFields.cakeDetails.value = order.cakeDetails || "";
-      modalFields.description.value = description;
-      modalFields.price.value = formatMoney(order.price);
-      modalFields.lineTotal.value = formatMoney(order.total);
-      modalFields.discount.value = formatMoney(order.discount);
-      modalFields.subtotal.value = formatMoney(subtotal);
-      modalFields.tax.value = formatMoney(order.tax);
-      modalFields.deliveryCharge.value = formatMoney(order.deliveryCharge);
-      modalFields.total.value = formatMoney(order.total);
-      modalFields.amountPaid.value = formatMoney(order.amountPaid);
-      modalFields.balanceDue.value = formatMoney(order.balanceDue);
+      modalFields.basePrice.value = formatMoney(priceFields.basePrice);
+      modalFields.flavorUpcharges.value = formatMoney(priceFields.flavorUpcharges);
+      modalFields.fillingUpcharges.value = formatMoney(priceFields.fillingUpcharges);
+      modalFields.decorUpcharges.value = formatMoney(priceFields.decorUpcharges);
+      modalFields.deliveryFee.value = formatMoney(priceFields.deliveryFee);
+      modalFields.discount.value = formatMoney(priceFields.discount);
+      modalFields.totalPrice.value = formatMoney(priceFields.totalPrice);
+      modalFields.depositPaid.value = formatMoney(priceFields.depositPaid);
+      modalFields.balanceDue.value = formatMoney(priceFields.balanceDue);
+      modalFields.paymentStatus.value = priceFields.paymentStatus;
       modalDateRequired.textContent = `Date Required: ${modalFields.eventDisplay.value}`;
       modalPrinted.textContent = `Printed ${formatPrintedStamp()}`;
+      syncDeliveryLocationVisibility();
+      syncPriceTotalsFromSheetItems();
+      syncPaymentFields({ recalculateTotal: false });
+    }
+
+    function getComponentTotalFromModal() {
+      return Math.max(
+        parseMoney(modalFields.basePrice.value) +
+        parseMoney(modalFields.flavorUpcharges.value) +
+        parseMoney(modalFields.fillingUpcharges.value) +
+        parseMoney(modalFields.decorUpcharges.value) +
+        parseMoney(modalFields.deliveryFee.value) -
+        parseMoney(modalFields.discount.value),
+        0
+      );
+    }
+
+    function syncPaymentFields(options = {}) {
+      const shouldRecalculateTotal = options.recalculateTotal !== false;
+      const totalPrice = shouldRecalculateTotal
+        ? getComponentTotalFromModal()
+        : parseMoney(modalFields.totalPrice.value);
+      const depositPaid = parseMoney(modalFields.depositPaid.value);
+      const balanceDue = Math.max(totalPrice - depositPaid, 0);
+
+      modalFields.totalPrice.value = formatMoney(totalPrice);
+      modalFields.balanceDue.value = formatMoney(balanceDue);
+      modalFields.paymentStatus.value = derivePaymentStatus(totalPrice, depositPaid, balanceDue, modalFields.paymentStatus.value);
+    }
+
+    function syncBalanceFromTotal() {
+      const totalPrice = parseMoney(modalFields.totalPrice.value);
+      const depositPaid = parseMoney(modalFields.depositPaid.value);
+      const balanceDue = Math.max(totalPrice - depositPaid, 0);
+
+      modalFields.balanceDue.value = formatMoney(balanceDue);
+      modalFields.paymentStatus.value = derivePaymentStatus(totalPrice, depositPaid, balanceDue, modalFields.paymentStatus.value);
     }
 
     function openOrderModal(row) {
       activeOrderRow = row;
       fillModal(getOrderFromRow(row));
+      sheetDeleteRow.hidden = false;
       modalOverlay.classList.add("is-open");
       modalOverlay.setAttribute("aria-hidden", "false");
       modalFields.customerName.focus();
+    }
+
+    function openNewOrderModal() {
+      activeOrderRow = null;
+      const builderOrder = getLatestBuilderOrderSummary();
+
+      fillModal(builderOrder || {
+        orderName: "New Order",
+        orderId: "",
+        orderNumber: `#${Date.now().toString().slice(-6)}`,
+        customerName: "",
+        customerPhone: "",
+        eventDate: "",
+        eventDisplay: "",
+        pickupDelivery: "Pickup",
+        fulfillment: "Pickup",
+        dateOrdered: formatDateDisplay(new Date().toISOString().slice(0, 10)),
+        takenBy: "Cakesupply",
+        status: "inquiry",
+        addressLine: "",
+        addressCity: "",
+        quantity: "1",
+        cakeDetails: "",
+        flavor: "",
+        decor: "",
+        notes: "",
+        price: 0,
+        basePrice: 0,
+        flavorUpcharges: 0,
+        fillingUpcharges: 0,
+        decorUpcharges: 0,
+        deliveryFee: 0,
+        discount: 0,
+        tax: 0,
+        deliveryCharge: 0,
+        amountPaid: 0,
+        depositPaid: 0,
+        balanceDue: 0,
+        total: 0,
+        totalPrice: 0,
+        paymentStatus: "Unpaid"
+      });
+      sheetDeleteRow.hidden = true;
+      modalOverlay.classList.add("is-open");
+      modalOverlay.setAttribute("aria-hidden", "false");
+      modalFields.customerName.focus();
+    }
+
+    function getLatestBuilderOrderSummary() {
+      try {
+        const savedSummary = localStorage.getItem(BUILDER_ORDER_SUMMARY_KEY);
+        if (!savedSummary) return null;
+        return normalizeOrder(JSON.parse(savedSummary));
+      } catch (error) {
+        console.warn("Unable to read builder order summary", error);
+        return null;
+      }
     }
 
     function closeOrderModal() {
       modalOverlay.classList.remove("is-open");
       modalOverlay.setAttribute("aria-hidden", "true");
       activeOrderRow = null;
+      sheetDeleteRow.hidden = true;
     }
 
     function splitDescription(value) {
@@ -1772,33 +2907,138 @@
       };
     }
 
-    function saveModalEdits() {
-      if (!activeOrderRow) return;
-      const description = splitDescription(modalFields.description.value);
+    function collectModalOrder() {
+      const orderItems = collectSheetItems();
+      const firstItem = orderItems[0] || {};
+      const flavor = orderItems.map((item) => item.flavor).filter(Boolean).join(", ");
+      const frosting = orderItems.map((item) => item.frosting).filter(Boolean).join(", ");
+      const filling = orderItems.map((item) => item.filling).filter(Boolean).join(", ");
       const status = modalFields.status.value;
+      syncPriceTotalsFromSheetItems();
+      syncBalanceFromTotal();
+      const basePrice = parseMoney(modalFields.basePrice.value);
+      const flavorUpcharges = parseMoney(modalFields.flavorUpcharges.value);
+      const fillingUpcharges = parseMoney(modalFields.fillingUpcharges.value);
+      const decorUpcharges = parseMoney(modalFields.decorUpcharges.value);
+      const deliveryFee = parseMoney(modalFields.deliveryFee.value);
+      const discount = parseMoney(modalFields.discount.value);
+      const totalPrice = parseMoney(modalFields.totalPrice.value);
+      const paid = parseMoney(modalFields.depositPaid.value);
       const balance = parseMoney(modalFields.balanceDue.value);
-      const paid = parseMoney(modalFields.amountPaid.value);
       const pickupParts = modalFields.pickupDelivery.value.split(",");
-      const fulfillmentLabel = pickupParts[0]?.trim() || modalFields.fulfillment.value || "Pickup";
-      const timeLabel = pickupParts.slice(1).join(",").trim() || modalFields.eventDisplay.value.split("@").pop()?.trim() || "";
-      const addressLabel = fulfillmentLabel.toLowerCase().includes("delivery") ? modalFields.addressLine.value || "Road St." : "&nbsp;";
+      const fulfillmentLabel = modalFields.fulfillment.value || pickupParts[0]?.trim() || "Pickup";
+      const pickupTime = pickupParts.slice(1).join(",").trim();
+      const eventTime = modalFields.eventDisplay.value.split("@").slice(1).join("@").trim();
+      const rawTimeLabel = modalFields.timeRequired.value.trim() || pickupTime || eventTime || "";
+      const timeLabel = ["pickup", "delivery"].includes(rawTimeLabel.toLowerCase()) ? "" : rawTimeLabel;
+      const dateLabel = modalFields.eventDisplay.value.split("@")[0].trim();
+      modalFields.pickupDelivery.value = [fulfillmentLabel, timeLabel].filter(Boolean).join(", ");
 
-      activeOrderRow.dataset.status = status;
-      activeOrderRow.querySelector(".meta").textContent = modalFields.orderNumber.value || "#0000";
-      activeOrderRow.querySelector(".order-name").textContent = modalFields.customerName.value;
-      activeOrderRow.cells[2].textContent = timeLabel;
-      activeOrderRow.cells[3].innerHTML = `${fulfillmentLabel}<div class="meta">${addressLabel}</div>`;
-      activeOrderRow.cells[4].textContent = modalFields.cakeDetails.value;
-      activeOrderRow.cells[5].textContent = description.flavor;
-      activeOrderRow.cells[6].textContent = description.decor;
-      activeOrderRow.cells[7].innerHTML = balance > 0
-        ? `<span class="payment-due">$${formatMoney(balance)} balance</span><div class="meta">$${formatMoney(paid)} deposit paid</div>`
-        : `<span class="payment-paid">Paid in full</span><div class="meta">$0 balance</div>`;
-      activeOrderRow.cells[8].textContent = description.notes;
-      renderOrderProgress(activeOrderRow);
-      setStats();
-      filterRows();
-      closeOrderModal();
+      return {
+        orderId: activeOrderRow?.dataset.orderId || "",
+        orderName: modalFields.cakeDetails.value || "Custom cake order",
+        orderNumber: modalFields.orderNumber.value || "#0000",
+        customerName: modalFields.customerName.value,
+        customerPhone: modalFields.customerPhone.value,
+        pickupDelivery: [fulfillmentLabel, timeLabel].filter(Boolean).join(", "),
+        eventDisplay: [dateLabel, timeLabel].filter(Boolean).join(" @ "),
+        eventDate: parseEventDate(dateLabel),
+        fulfillment: fulfillmentLabel,
+        time: timeLabel,
+        dateOrdered: modalFields.dateOrdered.value,
+        takenBy: modalFields.takenBy.value,
+        status,
+        addressName: modalFields.addressName.value,
+        addressLine: modalFields.addressLine.value,
+        addressCity: modalFields.addressCity.value,
+        addressPhone: modalFields.addressPhone.value,
+        quantity: normalizeQuantity(firstItem.quantity),
+        cakeDetails: firstItem.label || "",
+        description: orderItems.map((item) => [
+          item.label,
+          `Flavor: ${item.flavor || ""}`,
+          `Frosting: ${item.frosting || ""}`,
+          `Filling: ${item.filling || ""}`
+        ].join("\n")).join("\n\n"),
+        flavor,
+        frosting,
+        filling,
+        decor: orderItems.map((item) => item.decor).filter(Boolean).join(", "),
+        notes: "",
+        orderItems,
+        basePrice,
+        flavorUpcharges,
+        fillingUpcharges,
+        decorUpcharges,
+        deliveryFee,
+        discount,
+        depositPaid: paid,
+        balanceDue: balance,
+        totalPrice,
+        paymentStatus: modalFields.paymentStatus.value,
+        price: basePrice,
+        lineTotal: totalPrice,
+        deliveryCharge: deliveryFee,
+        total: totalPrice,
+        amountPaid: paid,
+        savedAt: new Date().toISOString()
+      };
+    }
+
+    async function saveModalEdits() {
+      modalSave.disabled = true;
+      clearAdminMessage();
+
+      try {
+        const response = await fetch(ORDERS_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(collectModalOrder())
+        });
+
+        if (!response.ok) throw new Error("Unable to save order");
+
+        closeOrderModal();
+        await loadOrders();
+        showAdminMessage("Order saved.", "success");
+      } catch (error) {
+        showAdminMessage("Backend is not running. Start the backend at http://localhost:3000 to save orders.", "error");
+      } finally {
+        modalSave.disabled = false;
+      }
+    }
+
+    async function deleteActiveOrder() {
+      if (!activeOrderRow) return;
+
+      const order = getOrderFromRow(activeOrderRow);
+      const orderKey = order.orderId || order.orderNumber;
+      if (!orderKey) {
+        showAdminMessage("This order cannot be deleted because it does not have an order id or order number.", "error");
+        return;
+      }
+
+      const orderLabel = order.customerName || order.orderNumber || "this order";
+      if (!window.confirm(`Delete ${orderLabel}? This cannot be undone.`)) return;
+
+      modalDelete.disabled = true;
+      clearAdminMessage();
+
+      try {
+        const response = await fetch(`${ORDERS_API_URL}/${encodeURIComponent(orderKey)}`, {
+          method: "DELETE"
+        });
+
+        if (!response.ok) throw new Error("Unable to delete order");
+
+        closeOrderModal();
+        await loadOrders();
+        showAdminMessage("Order deleted.", "success");
+      } catch (error) {
+        showAdminMessage("Backend is not running. Start the backend at http://localhost:3000 to delete orders.", "error");
+      } finally {
+        modalDelete.disabled = false;
+      }
     }
 
     function openBuilderSummary(builderSummary) {
@@ -1817,18 +3057,26 @@
         status: builderSummary.status || "inquiry",
         addressLine: builderSummary.addressLine || "Road St.",
         addressCity: builderSummary.addressCity || "City, State, Zip",
-        quantity: builderSummary.quantity || "1 Each",
+        quantity: normalizeQuantity(builderSummary.quantity),
         cakeDetails: builderSummary.cakeDetails || builderSummary.label || "",
         flavor: builderSummary.flavor || "",
         decor: builderSummary.decor || "",
         notes: builderSummary.notes || "",
-        price: Number(builderSummary.price || builderSummary.total || 0),
+        basePrice: Number(builderSummary.basePrice || builderSummary.price || builderSummary.total || 0),
+        flavorUpcharges: Number(builderSummary.flavorUpcharges || 0),
+        fillingUpcharges: Number(builderSummary.fillingUpcharges || 0),
+        decorUpcharges: Number(builderSummary.decorUpcharges || 0),
+        deliveryFee: Number(builderSummary.deliveryFee || builderSummary.deliveryCharge || 0),
         discount: Number(builderSummary.discount || 0),
+        depositPaid: Number(builderSummary.depositPaid || builderSummary.amountPaid || 0),
+        balanceDue: Number(builderSummary.balanceDue || builderSummary.totalPrice || builderSummary.total || 0),
+        totalPrice: Number(builderSummary.totalPrice || builderSummary.total || 0),
+        paymentStatus: builderSummary.paymentStatus || "Unpaid",
+        price: Number(builderSummary.basePrice || builderSummary.price || builderSummary.total || 0),
         tax: Number(builderSummary.tax || 0),
-        deliveryCharge: Number(builderSummary.deliveryCharge || 0),
-        amountPaid: Number(builderSummary.amountPaid || 0),
-        balanceDue: Number(builderSummary.balanceDue || builderSummary.total || 0),
-        total: Number(builderSummary.total || 0)
+        deliveryCharge: Number(builderSummary.deliveryFee || builderSummary.deliveryCharge || 0),
+        amountPaid: Number(builderSummary.depositPaid || builderSummary.amountPaid || 0),
+        total: Number(builderSummary.totalPrice || builderSummary.total || 0)
       });
       modalOverlay.classList.add("is-open");
       modalOverlay.setAttribute("aria-hidden", "false");
@@ -1837,6 +3085,28 @@
     [searchFilter, statusFilter, dateFromFilter, dateToFilter].forEach((control) => {
       control.addEventListener("input", filterRows);
     });
+
+    [
+      modalFields.basePrice,
+      modalFields.flavorUpcharges,
+      modalFields.fillingUpcharges,
+      modalFields.decorUpcharges,
+      modalFields.deliveryFee,
+      modalFields.discount
+    ].forEach((control) => {
+      control.addEventListener("input", () => syncPaymentFields());
+      control.addEventListener("blur", () => syncPaymentFields());
+    });
+
+    [modalFields.totalPrice, modalFields.depositPaid].forEach((control) => {
+      control.addEventListener("input", syncBalanceFromTotal);
+      control.addEventListener("blur", syncBalanceFromTotal);
+    });
+
+    modalFields.fulfillment.addEventListener("change", syncDeliveryLocationVisibility);
+    modalFields.cakeDetails.addEventListener("input", syncBasePriceFromCakeDetails);
+    modalFields.cakeDetails.addEventListener("blur", syncBasePriceFromCakeDetails);
+    addItemButton.addEventListener("click", () => addSheetItem());
 
     searchToggle.addEventListener("click", () => {
       if (searchPanel.classList.contains("is-open")) {
@@ -1851,6 +3121,7 @@
     });
     calendarToggle.addEventListener("click", toggleCalendarView);
     ordersViewButton.addEventListener("click", showOrdersView);
+    newOrderButton.addEventListener("click", openNewOrderModal);
     document.addEventListener("pointerdown", (event) => {
       if (!searchPanel.classList.contains("is-open")) return;
       if (searchPanel.contains(event.target) || searchToggle.contains(event.target)) return;
@@ -1863,7 +3134,9 @@
 
     renderAllOrderProgress();
     modalClose.addEventListener("click", closeOrderModal);
+    modalPrint.addEventListener("click", () => window.print());
     modalSave.addEventListener("click", saveModalEdits);
+    modalDelete.addEventListener("click", deleteActiveOrder);
     modalOverlay.addEventListener("click", (event) => {
       if (event.target === modalOverlay) closeOrderModal();
     });
@@ -1882,6 +3155,7 @@
 
     setStats();
     filterRows();
+    loadOrders();
   </script>
 </body>
 </html>

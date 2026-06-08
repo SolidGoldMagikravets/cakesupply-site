@@ -20,12 +20,14 @@ const recommendationsPage = document.getElementById("recommendations-page");
 const recommendationsBackButton = document.getElementById("recommendations-back-btn");
 const siteLogo = document.getElementById("site-logo");
 const menuTab = document.getElementById("menu-tab");
-const galleryTab = document.getElementById("gallery-tab");
+const gingerbreadTab = document.getElementById("gingerbread-tab");
 const displayCaseTab = document.getElementById("display-case-tab");
 const orderTab = document.getElementById("order-tab");
 const queryParams = new URLSearchParams(window.location.search);
 const isDevMode = queryParams.get("dev") === "1";
 const APP_STATE_KEY = "cake-supply-app-state";
+const BUILDER_ORDER_SUMMARY_KEY = "cake-supply-builder-order-summary";
+const ORDERS_API_URL = "http://localhost:3000/orders";
 const LANDING_HERO_BASE_SCALE = 1.62;
 const LANDING_HERO_FRAME_PADDING = 1.46;
 const LIVE_PREVIEW_DEBOUNCE_MS = 180;
@@ -45,6 +47,8 @@ const SHELL_BORDER_DECOR = "shell-border";
 const SWIRL_DECOR = "swirls";
 const DEFAULT_OUTER_FROSTING_COLOR = "#fff7c7";
 const DEFAULT_SHELL_FROSTING_COLOR = "#fffdf4";
+const CUPCAKE_LINER_COLOR = "#f8f3e8";
+const CUPCAKE_MODEL_SRC = "models/cupcake_single.glb";
 const SHELL_BORDER_MODEL_SRC = "decoration/shell_single1.glb";
 const SWIRL_MODEL_SRC = "decoration/swirl1.glb";
 const CHERRY_MODEL_SRC = "decoration/cherry1.glb";
@@ -84,29 +88,38 @@ const tieredOptions = [
   { tiers: [6, 8, 10, 12, 14], servings: 177 }
 ];
 
-const CUPCAKE_PRICE = 3;
+const CUPCAKE_DOZEN_PRICE = 35;
 const CUPCAKE_QUANTITY_STEP = 12;
 const CUPCAKE_MAX_STANDALONE = 60;
 const CUPCAKE_MAX_SUPPLEMENT = 36;
 
 function getSavedAppState() {
-  clearSavedAppState();
-  return null;
-}
-
-function setSavedAppState(state) {
-  void state;
-}
-
-function clearSavedAppState() {
   try {
-    localStorage.removeItem(APP_STATE_KEY);
+    const savedState = localStorage.getItem(APP_STATE_KEY);
+    return savedState ? JSON.parse(savedState) : null;
   } catch (error) {
-    console.warn("Unable to clear saved app state", error);
+    console.warn("Unable to read saved app state", error);
+    return null;
   }
 }
 
-function showLandingPageView() {
+function setSavedAppState(state) {
+  try {
+    localStorage.setItem(APP_STATE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn("Unable to save app state", error);
+  }
+}
+
+function showLandingPageView({ force = false } = {}) {
+  const customizerEl = document.getElementById("customizer");
+  if (!force && document.body.classList.contains("customizer-active") && customizerEl?.style.display === "block") {
+    return;
+  }
+  if (!force && document.body.classList.contains("results-active")) {
+    return;
+  }
+
   teardownMenuPreviewObserver();
   if (landingPage) landingPage.style.display = "block";
   if (menuPage) {
@@ -131,7 +144,6 @@ function showLandingPageView() {
   if (heroRecommendationMeta) {
     heroRecommendationMeta.setAttribute("aria-hidden", "true");
   }
-  const customizerEl = document.getElementById("customizer");
   if (customizerEl) customizerEl.style.display = "none";
 }
 
@@ -272,7 +284,7 @@ function returnToLandingPage() {
   activeHeroRecommendation = null;
   pendingLandingHeroTierSizes = null;
   landingHeroUsesBlankPreview = false;
-  showLandingPageView();
+  showLandingPageView({ force: true });
   requestAnimationFrame(() => {
     void initLandingHero().then(() => {
       requestAnimationFrame(() => {
@@ -301,20 +313,16 @@ function openMenuPage() {
   setSavedAppState({ view: "menu" });
 }
 
-function openGalleryPage() {
+function openGingerbreadPage() {
   debouncedLandingHeroPreviewUpdate.cancel();
   showGalleryPageView();
-  setSavedAppState({ view: "gallery" });
+  setSavedAppState({ view: "gingerbread" });
 }
 
 function openDisplayCasePage() {
   debouncedLandingHeroPreviewUpdate.cancel();
   showDisplayCasePageView();
   setSavedAppState({ view: "display-case" });
-}
-
-function isSameRecommendation(left, right) {
-  return Boolean(left && right && left.name === right.name && left.type === right.type);
 }
 
 function renderHeroRecommendationCard(recommendation, getBasePrice) {
@@ -658,25 +666,6 @@ function getFlavorColor(map, key, fallback) {
 
 function colorToThree(hex) {
   return new THREE.Color(hex || "#ffffff");
-}
-
-function setLandingHeroTierTargets(sceneIndex) {
-  if (!landingHeroTierEntries.length) return;
-
-  const sceneConfig = landingHeroScenes[sceneIndex % landingHeroScenes.length];
-
-  landingHeroTierEntries.forEach((entry, index) => {
-    const combo = sceneConfig[index];
-    if (!combo) return;
-
-    entry.targetColors = {
-      cake: colorToThree(getFlavorColor(cakeColorMap, combo.cake, defaultTierColors.cake)),
-      frosting: colorToThree(getFlavorColor(frostingColorMap, combo.frosting, defaultTierColors.frosting)),
-      filling: combo.filling
-        ? colorToThree(getFlavorColor(fillingColorMap, combo.filling, defaultTierColors.filling))
-        : null
-    };
-  });
 }
 
 function applyLandingHeroSceneImmediately(sceneIndex) {
@@ -1303,22 +1292,55 @@ function getRecommendationParts(recommendation) {
   return [];
 }
 
-function makeOptionModelViewer(src, altText) {
-  const viewer = document.createElement("model-viewer");
-  viewer.classList.add("option-cake-3d");
-  viewer.setAttribute("src", src);
-  viewer.setAttribute("alt", altText);
-  viewer.setAttribute("camera-controls", "");
-  viewer.setAttribute("auto-rotate", "");
-  viewer.setAttribute("disable-zoom", "");
-  return viewer;
+function getCustomizerParts(recommendation) {
+  return getRecommendationParts(recommendation).flatMap((part) => {
+    if (part.kind !== "cupcakes") return [part];
+
+    const cupcakeCount = part.cupcakeCount || CUPCAKE_QUANTITY_STEP;
+    const dozenCount = Math.max(1, Math.ceil(cupcakeCount / CUPCAKE_QUANTITY_STEP));
+
+    return Array.from({ length: dozenCount }, (_, dozenIndex) => {
+      const countForDozen = Math.min(
+        CUPCAKE_QUANTITY_STEP,
+        Math.max(cupcakeCount - dozenIndex * CUPCAKE_QUANTITY_STEP, 0)
+      );
+
+      return {
+        ...part,
+        cupcakeCount: countForDozen,
+        cupcakeDozenIndex: dozenIndex,
+        cupcakeDozenCount: dozenCount,
+        label: getCupcakeDozenLabel(countForDozen)
+      };
+    });
+  });
 }
 
-function addSymbolicSheetBadge(container, className = "") {
-  const badge = document.createElement("div");
-  badge.className = `symbolic-sheet-badge ${className}`.trim();
-  badge.textContent = "*";
-  container.appendChild(badge);
+function getCupcakeDozenLabel(cupcakeCount = CUPCAKE_QUANTITY_STEP) {
+  const dozenCount = Math.max(Math.ceil((cupcakeCount || CUPCAKE_QUANTITY_STEP) / CUPCAKE_QUANTITY_STEP), 1);
+  return `${dozenCount} ${dozenCount === 1 ? "Dozen" : "Dozen"} Cupcakes`;
+}
+
+function getCupcakeBasePrice(cupcakeCount = CUPCAKE_QUANTITY_STEP) {
+  const dozenCount = Math.max(Math.ceil((cupcakeCount || CUPCAKE_QUANTITY_STEP) / CUPCAKE_QUANTITY_STEP), 1);
+  return dozenCount * CUPCAKE_DOZEN_PRICE;
+}
+
+function normalizeSingleDozenCupcakeSelections(selectionList = []) {
+  return selectionList.flatMap((selection) => {
+    if (!isCupcakeKind(selection.kind)) return [selection];
+
+    const totalCupcakes = Math.max(Number(selection.cupcakeCount) || CUPCAKE_QUANTITY_STEP, CUPCAKE_QUANTITY_STEP);
+    const dozenCount = Math.max(Math.ceil(totalCupcakes / CUPCAKE_QUANTITY_STEP), 1);
+
+    return Array.from({ length: dozenCount }, (_, dozenIndex) => ({
+      ...selection,
+      label: "1 Dozen Cupcakes",
+      cupcakeCount: CUPCAKE_QUANTITY_STEP,
+      cupcakeDozenIndex: dozenIndex,
+      cupcakeDozenCount: dozenCount
+    }));
+  });
 }
 
 function getSheetCakeModelSrc(recommendationName) {
@@ -1358,6 +1380,7 @@ function normalizeCakeModelBounds(object) {
 function getMaterialRole(materialName = "") {
   const normalized = materialName.toLowerCase();
 
+  if (normalized.includes("liner")) return "liner";
   if (normalized.includes("filling")) return "filling";
   if (normalized.includes("frosting")) return "frosting";
   if (normalized.includes("cake")) return "cake";
@@ -1375,6 +1398,9 @@ function prepareTierMaterials(root) {
       const clonedMaterial = material.clone();
       const role = getMaterialRole(clonedMaterial.name);
 
+      if (role === "liner" && clonedMaterial.color) {
+        clonedMaterial.color.set(CUPCAKE_LINER_COLOR);
+      }
       clonedMaterial.roughness = role === "cake" ? 0.54 : (clonedMaterial.roughness ?? 0.48);
       clonedMaterial.metalness = 0.0;
       clonedMaterial.envMapIntensity = role === "frosting" ? 0.55 : 0.35;
@@ -1410,6 +1436,10 @@ function applyTierColorsToObject(object, selection = {}) {
 
     materials.forEach((material) => {
       const role = material.userData?.role;
+      if (role === "liner") {
+        if (material.color) material.color.set(CUPCAKE_LINER_COLOR);
+        return;
+      }
       const hex = role ? colors[role] : null;
 
       if (role === "filling") {
@@ -1473,6 +1503,13 @@ async function loadCakePartModel(localLoader, part) {
       normalizeCakePartScale(gltf.scene, part);
       resolve(gltf);
     }, undefined, reject);
+  });
+}
+
+async function loadModelScene(src, localLoader = loader) {
+  const loaderToUse = localLoader || new GLTFLoader();
+  return new Promise((resolve, reject) => {
+    loaderToUse.load(src, (gltf) => resolve(gltf.scene), undefined, reject);
   });
 }
 
@@ -1905,18 +1942,68 @@ function getTierDisplayText(sizes) {
     .join(" + ");
 }
 
-function createSheetCakePreviewNode(labelText, className = "") {
-  const sheetPreview = document.createElement("div");
-  sheetPreview.className = `sheet-cake-preview ${className}`.trim();
-  sheetPreview.setAttribute("aria-label", `${labelText} cake`);
-  sheetPreview.innerHTML = `
-    <div class="sheet-cake-top"></div>
-    <div class="sheet-cake-side"></div>
-    <div class="sheet-cake-filling"></div>
-    <div class="sheet-cake-label">${labelText}</div>
-  `;
+function initCupcakePreview3D(container, count) {
+  container.innerHTML = "";
 
-  return sheetPreview;
+  const scene = new THREE.Scene();
+  scene.background = null;
+
+  const width = container.clientWidth || 248;
+  const height = container.clientHeight || 122;
+  const camera = new THREE.PerspectiveCamera(30, width / height, 0.1, 100);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(width, height);
+  container.appendChild(renderer.domElement);
+
+  const keyLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.key);
+  keyLight.position.set(3, 4, 4);
+  scene.add(keyLight);
+
+  const fillLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.fill);
+  fillLight.position.set(-3, 2.5, 3);
+  scene.add(fillLight);
+
+  const ambient = new THREE.AmbientLight(0xffffff, CAKE_LIGHTING.ambient);
+  scene.add(ambient);
+
+  const group = new THREE.Group();
+  scene.add(group);
+
+  const totalCount = Math.min(count || CUPCAKE_QUANTITY_STEP, CUPCAKE_QUANTITY_STEP);
+  const columns = 4;
+  const rowsPerDozen = 3;
+  const spacingX = 0.35;
+  const spacingZ = 0.29;
+  const loader = new GLTFLoader();
+
+  loader.load(CUPCAKE_MODEL_SRC, (gltf) => {
+    const template = gltf.scene;
+    prepareTierMaterials(template);
+    const bounds = normalizeCakeModelBounds(template);
+    const scale = 0.28 / Math.max(bounds.width, bounds.depth, 0.001);
+
+    for (let index = 0; index < totalCount; index += 1) {
+      const cupcake = template.clone(true);
+      cupcake.scale.setScalar(scale);
+      cupcake.position.x = (index % columns - (columns - 1) / 2) * spacingX;
+      cupcake.position.z = (Math.floor(index / columns) - (rowsPerDozen - 1) / 2) * spacingZ;
+      group.add(cupcake);
+    }
+
+    const box = new THREE.Box3().setFromObject(group);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    group.position.x -= center.x;
+    group.position.z -= center.z;
+    group.rotation.x = 0.04;
+
+    camera.position.set(0, 0.9, 2.2);
+    camera.lookAt(0, 0.08, 0);
+    renderer.render(scene, camera);
+  }, undefined, () => {
+    container.classList.add("is-unavailable");
+  });
 }
 
 function createCupcakePreviewNode(count) {
@@ -1924,26 +2011,42 @@ function createCupcakePreviewNode(count) {
   cupcakePreview.className = "cupcake-preview";
   cupcakePreview.setAttribute("aria-label", `${count} cupcakes`);
 
-  const grid = document.createElement("div");
-  grid.className = "cupcake-preview-grid";
-  const visibleCount = Math.min(count || CUPCAKE_QUANTITY_STEP, CUPCAKE_QUANTITY_STEP);
+  const visibleDozens = Math.min(
+    Math.max(Math.ceil((count || CUPCAKE_QUANTITY_STEP) / CUPCAKE_QUANTITY_STEP), 1),
+    3
+  );
+  const displayedCupcakeCount = visibleDozens * CUPCAKE_QUANTITY_STEP;
+  const overflowCount = Math.max((count || 0) - displayedCupcakeCount, 0);
+  const visualRow = document.createElement("div");
+  visualRow.className = "cupcake-preview-visual-row";
 
-  for (let i = 0; i < visibleCount; i++) {
-    const cupcake = document.createElement("span");
-    cupcake.className = "cupcake-preview-cupcake";
-    cupcake.innerHTML = `
-      <span class="cupcake-preview-frosting"></span>
-      <span class="cupcake-preview-liner"></span>
-    `;
-    grid.appendChild(cupcake);
+  const shelfStack = document.createElement("div");
+  shelfStack.className = "cupcake-preview-shelf-stack";
+  shelfStack.style.setProperty("--dozen-count", visibleDozens);
+
+  for (let dozenIndex = 0; dozenIndex < visibleDozens; dozenIndex += 1) {
+    const shelf = document.createElement("div");
+    shelf.className = "cupcake-preview-shelf";
+    shelf.style.setProperty("--shelf-index", dozenIndex);
+
+    const grid = document.createElement("div");
+    grid.className = "cupcake-preview-grid";
+    shelf.appendChild(grid);
+    shelfStack.appendChild(shelf);
+
+    requestAnimationFrame(() => initCupcakePreview3D(grid, CUPCAKE_QUANTITY_STEP));
   }
 
-  const label = document.createElement("div");
-  label.className = "cupcake-preview-label";
-  label.textContent = `${count} Cupcakes`;
+  visualRow.appendChild(shelfStack);
 
-  cupcakePreview.appendChild(grid);
-  cupcakePreview.appendChild(label);
+  if (overflowCount > 0) {
+    const overflowBadge = document.createElement("div");
+    overflowBadge.className = "cupcake-preview-overflow";
+    overflowBadge.textContent = `+${overflowCount}`;
+    visualRow.appendChild(overflowBadge);
+  }
+
+  cupcakePreview.appendChild(visualRow);
   return cupcakePreview;
 }
 
@@ -2155,38 +2258,6 @@ function buildRecommendationVisualLayout(container, recommendation) {
   });
 }
 
-function initSheetComboPreview(container, recommendation) {
-  container.innerHTML = "";
-
-  const wrapper = document.createElement("div");
-  wrapper.className = "sheet-combo-preview";
-
-  const roundPreview = document.createElement("div");
-  roundPreview.className = "sheet-combo-round-preview";
-
-  const sheetPreview = document.createElement("div");
-  sheetPreview.className = "sheet-combo-round-preview";
-
-  wrapper.appendChild(roundPreview);
-  wrapper.appendChild(sheetPreview);
-  container.appendChild(wrapper);
-
-  const roundSizeMatch = recommendation.name.match(/\d+/);
-  const roundSize = roundSizeMatch ? parseInt(roundSizeMatch[0], 10) : 10;
-
-  initRecommendationCake3D(roundPreview, {
-    name: `${roundSize}" cake`,
-    type: "single",
-    servings: recommendation.servings
-  });
-
-  initRecommendationCake3D(sheetPreview, {
-    name: recommendation.name,
-    type: "single-sheet",
-    servings: recommendation.servings
-  });
-}
-
 let scene, camera, renderer, loader, controls;
 let cakeObjects = [];
 let cakeSceneRoot = null;
@@ -2207,9 +2278,71 @@ let activeCameraView = "front";
 let customizerCameraTarget = new THREE.Vector3(0, 0.46, 0);
 let customizerFrontCameraOffset = new THREE.Vector3(0, 0.32, 1.32);
 let customizerCameraAnimation = null;
+let finishedOrderSelectedGroupKey = "main";
+let finishedOrderHitTargetLayer = null;
 
 function isBackupKind(kind) {
   return kind === "backup" || kind === "extra-backup";
+}
+
+function isCupcakeKind(kind) {
+  return kind === "cupcakes";
+}
+
+function isCupcakeStackSelected() {
+  const selectedSelection = activeCustomizerTierIndex !== null
+    ? customizerPreviewSelections[activeCustomizerTierIndex]
+    : null;
+
+  return activeCustomizerTierIndex !== null && isCupcakeKind(selectedSelection?.kind);
+}
+
+function getCupcakeStackMetrics(cupcakeEntries) {
+  const stackBox = new THREE.Box3();
+  cupcakeEntries.forEach((entry) => stackBox.expandByObject(entry.object));
+
+  if (stackBox.isEmpty()) {
+    return { centerX: 0, width: 0 };
+  }
+
+  const center = new THREE.Vector3();
+  stackBox.getCenter(center);
+
+  return {
+    centerX: center.x,
+    width: Math.max(stackBox.max.x - stackBox.min.x, 0)
+  };
+}
+
+function getActiveCupcakeEntry() {
+  if (activeCustomizerTierIndex === null) return null;
+  return cakeObjects.find((entry) => {
+    return isCupcakeKind(entry.kind) && entry.partIndex === activeCustomizerTierIndex;
+  }) || null;
+}
+
+function getActiveCupcakeClusterIndex() {
+  const activeCupcakeEntry = getActiveCupcakeEntry();
+  return Number.isInteger(activeCupcakeEntry?.clusterIndex) ? activeCupcakeEntry.clusterIndex : null;
+}
+
+function getActiveCupcakeClusterOffset() {
+  const activeCupcakeEntry = getActiveCupcakeEntry();
+  return typeof activeCupcakeEntry?.clusterOffsetX === "number" ? activeCupcakeEntry.clusterOffsetX : 0;
+}
+
+function setFocusObject(activeObject = null) {
+  void activeObject;
+}
+
+function syncFocusedSelectionFrame() {
+  if (activeCustomizerTierIndex === null) {
+    setFocusObject(null);
+    return;
+  }
+
+  const activeEntry = cakeObjects.find((entry) => entry.partIndex === activeCustomizerTierIndex) || null;
+  setFocusObject(activeEntry);
 }
 
 function syncBackupAnimationState() {
@@ -2217,14 +2350,17 @@ function syncBackupAnimationState() {
 
   const mainEntries = cakeObjects.filter((entry) => entry.kind === "main");
   const backupEntries = cakeObjects.filter((entry) => isBackupKind(entry.kind));
+  const cupcakeEntries = cakeObjects.filter((entry) => isCupcakeKind(entry.kind));
   if (!mainEntries.length) return;
 
-  if (!backupEntries.length) {
+  if (!backupEntries.length && !cupcakeEntries.length) {
     mainEntries.forEach((entry) => {
       entry.centerX = entry.homeX ?? 0;
       entry.hiddenX = entry.homeX ?? 0;
       entry.currentX = entry.currentX ?? entry.homeX ?? 0;
       entry.targetX = entry.targetX ?? entry.homeX ?? 0;
+      entry.currentZ = entry.currentZ ?? entry.homeZ ?? 0;
+      entry.targetZ = entry.homeZ ?? 0;
     });
     return;
   }
@@ -2239,6 +2375,8 @@ function syncBackupAnimationState() {
     entry.hiddenX = mainHiddenX;
     entry.currentX = typeof entry.currentX === "number" ? entry.currentX : entry.homeX ?? 0;
     entry.targetX = typeof entry.targetX === "number" ? entry.targetX : entry.homeX ?? 0;
+    entry.currentZ = typeof entry.currentZ === "number" ? entry.currentZ : entry.homeZ ?? 0;
+    entry.targetZ = entry.homeZ ?? 0;
   });
 
   backupEntries.forEach((entry) => {
@@ -2261,7 +2399,169 @@ function syncBackupAnimationState() {
       ? (typeof entry.currentX === "number" ? entry.currentX : entry.centerX)
       : entry.hiddenX;
     entry.object.position.x = entry.currentX;
+    entry.currentZ = typeof entry.currentZ === "number" ? entry.currentZ : entry.homeZ ?? 0;
+    entry.targetZ = entry.homeZ ?? 0;
   });
+
+  const shouldShowCupcakeStack = isCupcakeStackSelected();
+  const selectedCupcakeClusterIndex = getActiveCupcakeClusterIndex();
+  const selectedCupcakeClusterOffset = getActiveCupcakeClusterOffset();
+  const cupcakeHiddenOffset = Math.max(getCupcakeStackMetrics(cupcakeEntries).width + 1.4, 1.8);
+
+  cupcakeEntries.forEach((entry) => {
+    const clusterOffset = entry.clusterOffsetX || 0;
+    const clusterSide = (entry.clusterIndex || 0) < (selectedCupcakeClusterIndex || 0) ? -1 : 1;
+    entry.centerX = clusterOffset - selectedCupcakeClusterOffset;
+    entry.hiddenX = clusterSide * cupcakeHiddenOffset;
+    entry.targetX = shouldShowCupcakeStack && entry.clusterIndex === selectedCupcakeClusterIndex
+      ? entry.centerX
+      : entry.hiddenX;
+    entry.currentX = typeof entry.currentX === "number" ? entry.currentX : entry.targetX;
+    if (!shouldShowCupcakeStack) {
+      entry.currentX = entry.hiddenX;
+      entry.object.position.x = entry.currentX;
+    }
+    entry.currentZ = typeof entry.currentZ === "number" ? entry.currentZ : entry.homeZ ?? 0;
+    entry.targetZ = entry.homeZ ?? 0;
+  });
+}
+
+function frameCupcakeStackForEditing() {
+  if (!camera || !cakeObjects.length) return;
+  enforceCupcakeEditModelVisibility();
+
+  const box = new THREE.Box3();
+  cakeObjects.forEach((entry) => {
+    if (isCupcakeKind(entry.kind)) {
+      expandCupcakeTargetBox(box, entry);
+    }
+  });
+
+  if (box.isEmpty()) return;
+
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  box.getCenter(center);
+  box.getSize(size);
+
+  const fov = THREE.MathUtils.degToRad(camera.fov || 45);
+  const visibleHeight = Math.max(size.y + size.z * 0.32, 0.5);
+  const fitHeightDistance = visibleHeight / (2 * Math.tan(fov / 2));
+  const fitWidthDistance = size.x / (2 * Math.tan(fov / 2) * Math.max(camera.aspect || 1, 0.1));
+  const distance = Math.max(fitHeightDistance, fitWidthDistance, 1.7) * 1.18;
+  const endTarget = new THREE.Vector3(center.x, Math.max(center.y, 0.22), center.z + size.z * 0.06);
+  const endPosition = endTarget.clone().add(new THREE.Vector3(0, Math.max(size.y * 0.85, 0.62), distance));
+
+  customizerCameraAnimation = null;
+  camera.position.copy(endPosition);
+  camera.up.set(0, 1, 0);
+  customizerCameraTarget.copy(endTarget);
+  customizerFrontCameraOffset.copy(endPosition).sub(endTarget);
+  setOrbitTarget(endTarget);
+  activeCameraView = "front";
+  syncCameraViewButtons();
+}
+
+function expandCupcakeTargetBox(box, entry) {
+  if (!entry?.object?.visible) return;
+
+  const targetOffset = getEntryTargetWorldOffset(entry);
+
+  const entryBox = new THREE.Box3().setFromObject(entry.object);
+  if (!entryBox.isEmpty()) {
+    entryBox.translate(targetOffset);
+    box.union(entryBox);
+  }
+
+  if (entry.cupcakeSwirlGroup?.visible) {
+    const swirlBox = new THREE.Box3().setFromObject(entry.cupcakeSwirlGroup);
+    if (!swirlBox.isEmpty()) {
+      swirlBox.translate(targetOffset);
+      box.union(swirlBox);
+    }
+  }
+}
+
+function getEntryTargetWorldOffset(entry) {
+  const currentLocalPosition = entry.object.position.clone();
+  const targetLocalPosition = new THREE.Vector3(
+    entry.targetX ?? currentLocalPosition.x,
+    entry.targetY ?? currentLocalPosition.y,
+    entry.targetZ ?? currentLocalPosition.z
+  );
+
+  if (!entry.object.parent) {
+    return targetLocalPosition.sub(currentLocalPosition);
+  }
+
+  entry.object.parent.updateWorldMatrix(true, false);
+  const currentWorldPosition = currentLocalPosition.clone();
+  const targetWorldPosition = targetLocalPosition.clone();
+  entry.object.parent.localToWorld(currentWorldPosition);
+  entry.object.parent.localToWorld(targetWorldPosition);
+  return targetWorldPosition.sub(currentWorldPosition);
+}
+
+function getCupcakePreviewWindowItems() {
+  const selectionIndex = activeCustomizerTierIndex;
+  const selection = selectionIndex !== null ? customizerPreviewSelections[selectionIndex] : null;
+  if (!isCupcakeKind(selection?.kind)) return [];
+
+  return [{
+    selection,
+    selectionIndex,
+    dozenIndex: selection.cupcakeDozenIndex || 0,
+    dozenCount: 1
+  }];
+}
+
+function renderCupcakePreviewWindows(isVisible = isCupcakeStackSelected()) {
+  const stack = document.getElementById("cupcake-preview-window-stack");
+  if (!stack) return;
+
+  const items = getCupcakePreviewWindowItems();
+  stack.innerHTML = "";
+  stack.hidden = !isVisible;
+  stack.style.setProperty("--preview-window-count", Math.max(items.length, 1));
+
+  items.forEach((item) => {
+    const isActiveWindow = item.selectionIndex === activeCustomizerTierIndex;
+    const windowEl = document.createElement("button");
+    windowEl.type = "button";
+    windowEl.className = `cupcake-preview-window${isActiveWindow ? " is-active" : ""}`;
+    windowEl.dataset.index = item.selectionIndex;
+    windowEl.dataset.kind = "cupcakes";
+    windowEl.setAttribute("aria-label", `Edit ${item.selection.label || "1 Dozen Cupcakes"}`);
+
+    const viewport = document.createElement("span");
+    viewport.className = "cupcake-preview-window-viewport";
+    const label = document.createElement("span");
+    label.className = "cupcake-preview-window-label";
+    label.textContent = "1 Dozen Cupcakes";
+
+    windowEl.appendChild(viewport);
+    windowEl.appendChild(label);
+    windowEl.addEventListener("click", () => {
+      selectTier(item.selectionIndex);
+      renderCupcakePreviewWindows(true);
+    });
+    stack.appendChild(windowEl);
+
+    requestAnimationFrame(() => initCupcakePreview3D(viewport, CUPCAKE_QUANTITY_STEP));
+  });
+}
+
+function syncCupcakePreviewWindowVisibility(isVisible = isCupcakeStackSelected()) {
+  const stack = document.getElementById("cupcake-preview-window-stack");
+  const builder = document.getElementById("cake-builder-3d");
+
+  if (builder) {
+    builder.classList.remove("is-cupcake-window-mode");
+  }
+  if (!stack) return;
+
+  stack.hidden = true;
+  stack.innerHTML = "";
 }
 
 function getCameraViewGizmoHTML() {
@@ -2301,13 +2601,14 @@ function getCameraGizmoAxisVectors() {
 
 function getCameraViewOffset(view) {
   const distance = Math.max(customizerFrontCameraOffset.length(), 0.1);
+  const isViewingCupcakes = isCupcakeStackSelected();
 
   if (view === "side") {
     return customizerFrontCameraOffset.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
   }
 
   if (view === "top") {
-    return new THREE.Vector3(0, distance, 0.001);
+    return new THREE.Vector3(0, distance * (isViewingCupcakes ? 1.7 : 1), 0.001);
   }
 
   return customizerFrontCameraOffset.clone();
@@ -2369,6 +2670,18 @@ function setOrbitTarget(target) {
   } else if (camera) {
     camera.lookAt(target);
   }
+}
+
+function shiftCustomizerCameraTarget(nextTarget) {
+  if (!camera) return;
+
+  const delta = nextTarget.clone().sub(customizerCameraTarget);
+  if (delta.lengthSq() < 0.000001) return;
+
+  customizerCameraAnimation = null;
+  customizerCameraTarget.copy(nextTarget);
+  camera.position.add(delta);
+  setOrbitTarget(nextTarget);
 }
 
 function snapCustomizerCameraToView(view = "front") {
@@ -2444,13 +2757,25 @@ function attachCameraViewGizmo(container) {
   updateCameraViewGizmoOrientation();
 }
 
-async function initCakeBuilder3D(recommendation, builderParts = null) {
+function resizeCustomizerRenderer() {
+  const container = document.getElementById("cake-builder-3d");
+  if (!container || !renderer || !camera) return;
+
+  const width = container.clientWidth || 420;
+  const height = container.clientHeight || 520;
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+  renderer.setSize(width, height);
+}
+
+async function initCakeBuilder3D(recommendation, builderParts = null, { showCameraGizmo = false } = {}) {
   const container = document.getElementById("cake-builder-3d");
 
   container.innerHTML = "";
   cakeObjects = [];
   cameraViewGizmo = null;
   cameraViewButtons = [];
+  finishedOrderHitTargetLayer = null;
   customizerCameraAnimation = null;
   if (cakeAnimationFrame) {
     cancelAnimationFrame(cakeAnimationFrame);
@@ -2486,11 +2811,15 @@ async function initCakeBuilder3D(recommendation, builderParts = null) {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
+  controls.enableRotate = false;
+  controls.enableZoom = false;
   controls.enablePan = false;
   controls.target.copy(customizerCameraTarget);
   controls.update();
 
-  attachCameraViewGizmo(container);
+  if (showCameraGizmo) {
+    attachCameraViewGizmo(container);
+  }
 
   loader = new GLTFLoader();
 
@@ -2529,9 +2858,15 @@ async function buildCake3D(parts) {
   let maxMainRadius = 0;
 
   const mainParts = parts
-    .map((part, partIndex) => ({ part, partIndex }))
+    .map((part, partIndex) => ({ part, partIndex: part.selectionIndex ?? partIndex }))
     .filter(({ part }) => part.kind === "main" && (part.size || part.sheetModelSrc))
     .sort((a, b) => b.part.size - a.part.size);
+  const cupcakeParts = parts
+    .map((part, partIndex) => ({ part, partIndex: part.selectionIndex ?? partIndex }))
+    .filter(({ part }) => part.kind === "cupcakes");
+  const totalCupcakeDozens = Math.max(cupcakeParts.reduce((total, { part }) => {
+    return total + Math.max(Math.ceil((part.cupcakeCount || CUPCAKE_QUANTITY_STEP) / CUPCAKE_QUANTITY_STEP), 1);
+  }, 0), 1);
 
   for (const { part, partIndex } of mainParts) {
     const gltf = await loadCakePartModel(loader, part);
@@ -2543,7 +2878,7 @@ async function buildCake3D(parts) {
       child.userData.partIndex = partIndex;
     });
     prepareTierMaterials(tier);
-    applyTierColorsToObject(tier);
+    applyTierColorsToObject(tier, customizerPreviewSelections[partIndex] || part);
 
     const { height, width } = normalizeCakeModelBounds(tier);
 
@@ -2564,8 +2899,11 @@ async function buildCake3D(parts) {
       tierRadius: radius,
       baseScale: tier.scale.x,
       homeX: tier.position.x,
+      homeZ: tier.position.z,
       currentX: tier.position.x,
-      targetX: tier.position.x
+      currentZ: tier.position.z,
+      targetX: tier.position.x,
+      targetZ: tier.position.z
     });
 
     currentHeight += height;
@@ -2573,6 +2911,7 @@ async function buildCake3D(parts) {
 
   for (const [partIndex, part] of parts.entries()) {
     if (part.kind !== "backup" || (!part.size && !part.sheetModelSrc)) continue;
+    const selectionIndex = part.selectionIndex ?? partIndex;
 
     const gltf = await loadCakePartModel(loader, part);
 
@@ -2580,10 +2919,10 @@ async function buildCake3D(parts) {
     applyCustomizerCakeDisplayScale(backupTier, part);
 
     backupTier.traverse((child) => {
-      child.userData.partIndex = partIndex;
+      child.userData.partIndex = selectionIndex;
     });
     prepareTierMaterials(backupTier);
-    applyTierColorsToObject(backupTier);
+    applyTierColorsToObject(backupTier, customizerPreviewSelections[selectionIndex] || part);
 
     const { height: backupHeight, width: backupWidth } = normalizeCakeModelBounds(backupTier);
     const backupRadius = backupWidth / 2;
@@ -2594,7 +2933,7 @@ async function buildCake3D(parts) {
 
     cakeObjects.push({
       object: backupTier,
-      partIndex,
+      partIndex: selectionIndex,
       kind: part.kind,
       size: part.size,
       stackY: 0,
@@ -2603,25 +2942,78 @@ async function buildCake3D(parts) {
       tierRadius: backupRadius,
       baseScale: backupTier.scale.x,
       homeX: sideOffset,
+      homeZ: backupTier.position.z,
       currentX: sideOffset,
+      currentZ: backupTier.position.z,
       targetX: sideOffset,
+      targetZ: backupTier.position.z,
       hiddenX: sideOffset + backupWidth + 1.2
     });
   }
 
-  const mainBox = new THREE.Box3();
-  const mainEntries = cakeObjects.filter((entry) => entry.kind === "main");
-  mainEntries.forEach((entry) => {
-    mainBox.expandByObject(entry.object);
+  for (const { part, partIndex } of cupcakeParts) {
+    const cupcakeGroup = await buildCustomizerCupcakeGroup(part, partIndex);
+    const cupcakeBox = new THREE.Box3().setFromObject(cupcakeGroup);
+    const cupcakeWidth = Math.max(cupcakeBox.max.x - cupcakeBox.min.x, 0.4);
+    const stackIndex = cupcakeParts.findIndex((cupcakePart) => cupcakePart.partIndex === partIndex);
+    const dozensPerCluster = 4;
+    const clusterIndex = Math.floor(stackIndex / dozensPerCluster);
+    const clusterCount = Math.max(Math.ceil(totalCupcakeDozens / dozensPerCluster), 1);
+    const indexInCluster = stackIndex % dozensPerCluster;
+    const clusterSize = Math.min(dozensPerCluster, totalCupcakeDozens - clusterIndex * dozensPerCluster);
+    const centeredStackIndex = indexInCluster - (clusterSize - 1) / 2;
+    const centeredClusterIndex = clusterIndex - (clusterCount - 1) / 2;
+    const sideOffset = mainParts.length ? maxMainRadius + 0.34 : 0;
+    const clusterOffsetX = centeredClusterIndex * 1.08;
+    const verticalOffset = -centeredStackIndex * 0.15;
+    const depthOffset = mainParts.length ? 0.62 : 0;
+
+    cupcakeGroup.position.x += sideOffset + clusterOffsetX;
+    cupcakeGroup.position.y += verticalOffset;
+    cupcakeGroup.position.z += depthOffset;
+    group.add(cupcakeGroup);
+
+    cakeObjects.push({
+      object: cupcakeGroup,
+      partIndex,
+      kind: part.kind,
+      cupcakeCount: part.cupcakeCount,
+      cupcakeDozenIndex: stackIndex,
+      cupcakeDozenCount: totalCupcakeDozens,
+      clusterIndex,
+      clusterOffsetX,
+      stackY: verticalOffset,
+      modelBaseY: cupcakeGroup.position.y,
+      tierHeight: cupcakeBox.max.y - cupcakeBox.min.y,
+      tierRadius: cupcakeWidth / 2,
+      baseScale: cupcakeGroup.scale.x,
+      homeX: sideOffset + clusterOffsetX,
+      homeZ: depthOffset,
+      currentX: sideOffset + clusterOffsetX,
+      currentZ: depthOffset,
+      targetX: sideOffset + clusterOffsetX,
+      targetZ: depthOffset,
+      centerX: sideOffset + clusterOffsetX,
+      hiddenX: sideOffset + clusterOffsetX
+    });
+  }
+
+  const frameBox = new THREE.Box3();
+  const frameEntries = cakeObjects.filter((entry) => {
+    if (mainParts.length) return entry.kind === "main";
+    return entry.kind === "cupcakes";
+  });
+  frameEntries.forEach((entry) => {
+    frameBox.expandByObject(entry.object);
   });
 
-  if (mainEntries.length) {
+  if (frameEntries.length) {
     const center = new THREE.Vector3();
-    mainBox.getCenter(center);
+    frameBox.getCenter(center);
 
     group.position.x -= center.x;
     group.position.z -= center.z;
-    group.position.y -= mainBox.min.y;
+    group.position.y -= frameBox.min.y;
     group.position.y += 0.26;
 
     syncBackupAnimationState();
@@ -2629,13 +3021,168 @@ async function buildCake3D(parts) {
 
   group.scale.setScalar(1.55);
 
-  camera.position.set(0, 0.78, 1.78);
+  camera.position.set(0, 0.82, 2.18);
   camera.up.set(0, 1, 0);
   customizerCameraTarget.set(0, 0.46, 0);
   customizerFrontCameraOffset.copy(camera.position).sub(customizerCameraTarget);
   activeCameraView = "front";
   setOrbitTarget(customizerCameraTarget);
   syncCameraViewButtons();
+}
+
+async function buildCustomizerCupcakeGroup(part, partIndex) {
+  const template = await loadModelScene(CUPCAKE_MODEL_SRC, loader);
+  prepareTierMaterials(template);
+  const bounds = normalizeCakeModelBounds(template);
+  const baseFootprint = Math.max(bounds.width, bounds.depth, 0.001);
+  const cupcakeScale = 0.07 / baseFootprint;
+  const cupcakeHeight = bounds.height * cupcakeScale;
+  const totalCount = Math.min(part.cupcakeCount || CUPCAKE_QUANTITY_STEP, CUPCAKE_QUANTITY_STEP * 3);
+  const visibleDozens = Math.min(Math.max(Math.ceil(totalCount / CUPCAKE_QUANTITY_STEP), 1), 3);
+  const columns = 4;
+  const rowsPerDozen = 3;
+  const spacingX = 0.1;
+  const spacingZ = 0.095;
+  const dozenSpacingZ = 0.38;
+  const group = new THREE.Group();
+  group.name = `cupcakes-${partIndex}`;
+  group.userData.partIndex = partIndex;
+  group.userData.kind = "cupcakes";
+  group.userData.cupcakeAnchors = [];
+
+  for (let dozenIndex = 0; dozenIndex < visibleDozens; dozenIndex += 1) {
+    const countForDozen = Math.min(
+      CUPCAKE_QUANTITY_STEP,
+      Math.max(totalCount - dozenIndex * CUPCAKE_QUANTITY_STEP, 0)
+    );
+    const dozenOffsetZ = (dozenIndex - (visibleDozens - 1) / 2) * dozenSpacingZ;
+
+    for (let index = 0; index < countForDozen; index += 1) {
+      const cupcake = template.clone(true);
+      prepareTierMaterials(cupcake);
+      cupcake.scale.setScalar(cupcakeScale);
+      cupcake.position.x = (index % columns - (columns - 1) / 2) * spacingX;
+      cupcake.position.z = (Math.floor(index / columns) - (rowsPerDozen - 1) / 2) * spacingZ + dozenOffsetZ;
+      cupcake.traverse((child) => {
+        child.userData.partIndex = partIndex;
+        child.userData.kind = "cupcakes";
+      });
+      group.userData.cupcakeAnchors.push({
+        position: cupcake.position.clone(),
+        height: cupcakeHeight,
+        radius: 0.052
+      });
+      group.add(cupcake);
+    }
+  }
+
+  const groupBox = new THREE.Box3().setFromObject(group);
+  const center = new THREE.Vector3();
+  groupBox.getCenter(center);
+  group.position.x -= center.x;
+  group.position.z -= center.z;
+  group.position.y -= groupBox.min.y;
+
+  return group;
+}
+
+function reflowCupcakeStackLayout({ selectedPartIndex = activeCustomizerTierIndex } = {}) {
+  const cupcakeEntries = cakeObjects
+    .filter((entry) => isCupcakeKind(entry.kind))
+    .sort((a, b) => a.partIndex - b.partIndex);
+  if (!cupcakeEntries.length) return;
+
+  const mainEntries = cakeObjects.filter((entry) => entry.kind === "main");
+  const maxMainRadius = mainEntries.reduce((maxRadius, entry) => {
+    return Math.max(maxRadius, entry.tierRadius || 0);
+  }, 0);
+  const totalCupcakeDozens = cupcakeEntries.length;
+  const dozensPerCluster = 4;
+  const clusterCount = Math.max(Math.ceil(totalCupcakeDozens / dozensPerCluster), 1);
+  const selectedEntry = cupcakeEntries.find((entry) => entry.partIndex === selectedPartIndex) || cupcakeEntries[0];
+  const selectedStackIndex = cupcakeEntries.indexOf(selectedEntry);
+  const selectedClusterIndex = selectedStackIndex === -1 ? 0 : Math.floor(selectedStackIndex / dozensPerCluster);
+  const selectedCenteredClusterIndex = selectedClusterIndex - (clusterCount - 1) / 2;
+  const selectedCupcakeClusterOffset = selectedCenteredClusterIndex * 1.08;
+  const sideOffset = mainEntries.length ? maxMainRadius + 0.34 : 0;
+  const depthOffset = mainEntries.length ? 0.62 : 0;
+
+  cupcakeEntries.forEach((entry, stackIndex) => {
+    const clusterIndex = Math.floor(stackIndex / dozensPerCluster);
+    const indexInCluster = stackIndex % dozensPerCluster;
+    const clusterSize = Math.min(dozensPerCluster, totalCupcakeDozens - clusterIndex * dozensPerCluster);
+    const centeredStackIndex = indexInCluster - (clusterSize - 1) / 2;
+    const centeredClusterIndex = clusterIndex - (clusterCount - 1) / 2;
+    const clusterOffsetX = centeredClusterIndex * 1.08;
+    const verticalOffset = -centeredStackIndex * 0.15;
+    const baseY = typeof entry.cupcakeBaseY === "number"
+      ? entry.cupcakeBaseY
+      : (entry.modelBaseY ?? entry.object.position.y) - (entry.stackY || 0);
+    const finalX = clusterOffsetX - selectedCupcakeClusterOffset;
+    const finalY = baseY + verticalOffset;
+
+    entry.cupcakeBaseY = baseY;
+    entry.cupcakeDozenIndex = stackIndex;
+    entry.cupcakeDozenCount = totalCupcakeDozens;
+    entry.clusterIndex = clusterIndex;
+    entry.clusterOffsetX = clusterOffsetX;
+    entry.stackY = verticalOffset;
+    entry.modelBaseY = finalY;
+    entry.homeX = sideOffset + clusterOffsetX;
+    entry.homeZ = depthOffset;
+    entry.centerX = finalX;
+    entry.targetX = finalX;
+    entry.targetY = finalY;
+    entry.targetZ = depthOffset;
+  });
+}
+
+async function addCupcakeDozenObject(selection, selectionIndex) {
+  if (!cakeSceneRoot || !loader) return null;
+
+  const cupcakeGroup = await buildCustomizerCupcakeGroup(selection, selectionIndex);
+  const cupcakeBox = new THREE.Box3().setFromObject(cupcakeGroup);
+  const cupcakeWidth = Math.max(cupcakeBox.max.x - cupcakeBox.min.x, 0.4);
+  cakeSceneRoot.add(cupcakeGroup);
+
+  const entry = {
+    object: cupcakeGroup,
+    partIndex: selectionIndex,
+    kind: "cupcakes",
+    cupcakeCount: selection.cupcakeCount,
+    cupcakeDozenIndex: 0,
+    cupcakeDozenCount: 1,
+    clusterIndex: 0,
+    clusterOffsetX: 0,
+    stackY: 0,
+    cupcakeBaseY: cupcakeGroup.position.y,
+    modelBaseY: cupcakeGroup.position.y,
+    tierHeight: cupcakeBox.max.y - cupcakeBox.min.y,
+    tierRadius: cupcakeWidth / 2,
+    baseScale: cupcakeGroup.scale.x,
+    homeX: cupcakeGroup.position.x,
+    homeZ: cupcakeGroup.position.z,
+    currentX: cupcakeGroup.position.x,
+    currentY: cupcakeGroup.position.y,
+    currentZ: cupcakeGroup.position.z,
+    targetX: cupcakeGroup.position.x,
+    targetY: cupcakeGroup.position.y,
+    targetZ: cupcakeGroup.position.z,
+    centerX: cupcakeGroup.position.x,
+    hiddenX: cupcakeGroup.position.x
+  };
+
+  cakeObjects.push(entry);
+  reflowCupcakeStackLayout({ selectedPartIndex: selectionIndex });
+  cupcakeGroup.position.x = entry.targetX;
+  cupcakeGroup.position.y = entry.targetY;
+  cupcakeGroup.position.z = entry.targetZ;
+  entry.currentX = entry.targetX;
+  entry.currentY = entry.targetY;
+  entry.currentZ = entry.targetZ;
+  applyTierColorsToObject(cupcakeGroup, selection);
+  await syncCupcakeFrostingForIndex(selectionIndex);
+  return entry;
 }
 
 async function addExtraBackupCakeObject(selection, selectionIndex) {
@@ -2677,9 +3224,12 @@ async function addExtraBackupCakeObject(selection, selectionIndex) {
     tierRadius: normalizedBackupWidth / 2,
     baseScale: backupTier.scale.x,
     homeX: sideOffset,
+    homeZ: backupTier.position.z,
     centerX: 0,
     currentX: hiddenOffset,
+    currentZ: backupTier.position.z,
     targetX: hiddenOffset,
+    targetZ: backupTier.position.z,
     hiddenX: hiddenOffset
   };
 
@@ -2694,24 +3244,199 @@ function animate() {
   cakeObjects.forEach((entry) => {
     if (typeof entry.currentX !== "number" || typeof entry.targetX !== "number") return;
 
-    entry.currentX += (entry.targetX - entry.currentX) * 0.14;
+    const lerpAmount = entry.animationLerp || 0.14;
+    entry.currentX += (entry.targetX - entry.currentX) * lerpAmount;
+    if (typeof entry.targetZ === "number") {
+      entry.currentZ = typeof entry.currentZ === "number" ? entry.currentZ : entry.object.position.z;
+      entry.currentZ += (entry.targetZ - entry.currentZ) * lerpAmount;
+      entry.object.position.z = entry.currentZ;
+    }
+    if (typeof entry.targetY === "number") {
+      entry.currentY = typeof entry.currentY === "number" ? entry.currentY : entry.object.position.y;
+      entry.currentY += (entry.targetY - entry.currentY) * lerpAmount;
+      entry.object.position.y = entry.currentY;
+    }
     entry.object.position.x = entry.currentX;
     if (entry.outerFrostingObject) {
-      const offset = entry.outerFrostingOffset || { x: 0 };
-      entry.outerFrostingObject.position.x = entry.currentX + offset.x;
+      positionOuterFrostingForEntry(entry);
+    }
+    if (entry.exitAfterAnimation && Math.abs(entry.targetX - entry.currentX) < 0.035) {
+      entry.object.visible = false;
+      entry.exitAfterAnimation = false;
+      entry.animationLerp = null;
+      if (entry.outerFrostingObject) entry.outerFrostingObject.visible = false;
+      if (entry.decorGroup) entry.decorGroup.visible = false;
+      if (entry.cupcakeSwirlGroup) entry.cupcakeSwirlGroup.visible = false;
     }
   });
   controls?.update();
   updateCameraViewGizmoOrientation();
+  enforceCupcakeEditModelVisibility();
   renderer.render(scene, camera);
+  syncFinishedOrderHitTargets();
+}
+
+function snapCakeObjectsToTargets() {
+  cakeObjects.forEach((entry) => {
+    if (typeof entry.targetX === "number") {
+      entry.currentX = entry.targetX;
+      entry.object.position.x = entry.targetX;
+    }
+
+    if (typeof entry.targetZ === "number") {
+      entry.currentZ = entry.targetZ;
+      entry.object.position.z = entry.targetZ;
+    }
+
+    if (typeof entry.targetY === "number") {
+      entry.currentY = entry.targetY;
+      entry.object.position.y = entry.targetY;
+    }
+
+    if (entry.outerFrostingObject) {
+      positionOuterFrostingForEntry(entry);
+    }
+    if (!entry.object.visible && entry.outerFrostingObject) {
+      entry.outerFrostingObject.visible = false;
+    }
+    if (!entry.object.visible && entry.decorGroup) {
+      entry.decorGroup.visible = false;
+    }
+    if (!entry.object.visible && entry.cupcakeSwirlGroup) {
+      entry.cupcakeSwirlGroup.visible = false;
+    }
+  });
+}
+
+function applyAllCustomizerSelectionColors() {
+  cakeObjects.forEach((entry) => {
+    const selection = customizerPreviewSelections[entry.partIndex];
+    if (!selection) return;
+
+    applyTierColorsToObject(entry.object, selection);
+    applyOuterFrostingColor(entry.outerFrostingObject, selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR);
+  });
+}
+
+function getCupcakeAddAnimationState() {
+  const visibleCupcakeEntries = cakeObjects.filter((entry) => {
+    return isCupcakeKind(entry.kind) && entry.object.visible;
+  });
+
+  return {
+    wasCupcakeView: isCupcakeStackSelected() || visibleCupcakeEntries.length > 0,
+    previousCupcakeCount: cakeObjects.filter((entry) => isCupcakeKind(entry.kind)).length,
+    previousCupcakePositions: new Map(
+      cakeObjects
+        .filter((entry) => isCupcakeKind(entry.kind))
+        .map((entry) => [entry.partIndex, {
+          x: entry.object.visible ? entry.object.position.x : (typeof entry.currentX === "number" ? entry.currentX : entry.object.position.x),
+          y: entry.object.position.y,
+          z: entry.object.position.z
+        }])
+    )
+  };
+}
+
+function hideNonCupcakeEntriesForCupcakeEdit() {
+  cakeObjects.forEach((entry) => {
+    if (isCupcakeKind(entry.kind)) return;
+
+    entry.object.visible = false;
+    entry.exitAfterAnimation = false;
+    entry.animationLerp = null;
+    if (entry.outerFrostingObject) entry.outerFrostingObject.visible = false;
+    if (entry.decorGroup) entry.decorGroup.visible = false;
+    if (entry.cupcakeSwirlGroup) entry.cupcakeSwirlGroup.visible = false;
+  });
+}
+
+function isCupcakeEditModeActive() {
+  const layout = document.getElementById("customizer-layout");
+  return Boolean(layout && !layout.classList.contains("is-fulfillment-step") && isCupcakeStackSelected());
+}
+
+function enforceCupcakeEditModelVisibility() {
+  if (!isCupcakeEditModeActive()) return;
+
+  cakeObjects.forEach((entry) => {
+    const isCupcake = isCupcakeKind(entry.kind);
+    entry.object.visible = isCupcake;
+    if (entry.outerFrostingObject) {
+      entry.outerFrostingObject.visible = isCupcake && !entry.peeking;
+    }
+    if (entry.decorGroup) {
+      entry.decorGroup.visible = isCupcake && !entry.peeking;
+    }
+    if (entry.cupcakeSwirlGroup) {
+      entry.cupcakeSwirlGroup.visible = isCupcake;
+    }
+  });
+}
+
+function prepareCupcakeAddAnimation(newCupcakeIndex, state) {
+  const cupcakeEntries = cakeObjects.filter((entry) => isCupcakeKind(entry.kind));
+  if (!cupcakeEntries.length) return;
+
+  const hiddenRight = Math.max(getCupcakeStackMetrics(cupcakeEntries).width + 1.4, 1.8);
+
+  cupcakeEntries.forEach((entry) => {
+    const finalX = entry.targetX;
+    const finalY = entry.object.position.y;
+    const finalZ = entry.targetZ ?? entry.object.position.z;
+    entry.targetY = finalY;
+
+    if (entry.partIndex === newCupcakeIndex) {
+      entry.currentX = hiddenRight;
+      entry.currentY = finalY;
+      entry.currentZ = finalZ;
+      entry.object.position.x = hiddenRight;
+      entry.object.position.y = finalY;
+      entry.object.position.z = finalZ;
+      return;
+    }
+
+    const previousPosition = state.previousCupcakePositions.get(entry.partIndex);
+    if (previousPosition) {
+      entry.currentX = state.wasCupcakeView ? finalX : hiddenRight;
+      entry.currentY = previousPosition.y;
+      entry.currentZ = finalZ;
+      if (state.wasCupcakeView) {
+        entry.centerX = finalX;
+        entry.targetX = finalX;
+      }
+      entry.object.position.x = entry.currentX;
+      entry.object.position.y = previousPosition.y;
+      entry.object.position.z = finalZ;
+    }
+  });
+
+  hideNonCupcakeEntriesForCupcakeEdit();
+  enforceCupcakeEditModelVisibility();
 }
 
 function attachCakePicker() {
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
+  let pointerDown = null;
 
   renderer.domElement.addEventListener("pointerdown", (event) => {
+    pointerDown = { x: event.clientX, y: event.clientY };
+  });
+
+  renderer.domElement.addEventListener("pointerleave", () => {
+    pointerDown = null;
+  });
+
+  renderer.domElement.addEventListener("pointerup", (event) => {
     if (!customizerTierSelect || !cakeObjects.length) return;
+    const isFulfillmentStep = document.getElementById("customizer-layout")?.classList.contains("is-fulfillment-step");
+    if (pointerDown) {
+      const deltaX = event.clientX - pointerDown.x;
+      const deltaY = event.clientY - pointerDown.y;
+      pointerDown = null;
+      if (Math.hypot(deltaX, deltaY) > 5) return;
+    }
 
     const rect = renderer.domElement.getBoundingClientRect();
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -2720,21 +3445,19 @@ function attachCakePicker() {
     raycaster.setFromCamera(pointer, camera);
 
     const meshes = cakeObjects.flatMap(({ object, outerFrostingObject }) => {
+      if (!object.visible) return [];
       const descendants = [];
       object.traverse((child) => {
-        if (child.isMesh) descendants.push(child);
+        if (child.isMesh && child.visible) descendants.push(child);
       });
       outerFrostingObject?.traverse((child) => {
-        if (child.isMesh) descendants.push(child);
+        if (child.isMesh && child.visible) descendants.push(child);
       });
       return descendants;
     });
 
-    const intersects = raycaster.intersectObjects(meshes, false);
-    if (!intersects.length) {
-      customizerTierSelect(null);
-      return;
-    }
+    const intersects = raycaster.intersectObjects(meshes, true);
+    if (!intersects.length) return;
 
     let clickedObject = intersects[0].object;
 
@@ -2743,9 +3466,14 @@ function attachCakePicker() {
     }
 
     if (clickedObject?.userData.partIndex !== undefined) {
-      customizerTierSelect(clickedObject.userData.partIndex);
+      if (isFulfillmentStep) {
+        selectFinishedOrderPart(clickedObject.userData.partIndex);
+      } else {
+        customizerTierSelect(clickedObject.userData.partIndex);
+      }
     }
   });
+
 }
 
 function getOuterFrostingModelSrc(size) {
@@ -2819,6 +3547,15 @@ function applyShellBorderMaterial(object, color = DEFAULT_SHELL_FROSTING_COLOR) 
   });
 }
 
+function orientShellAnchorAlongPerimeter(anchor, outward, tangent, rotationOffset = 0) {
+  const up = new THREE.Vector3(0, 1, 0);
+  const rotationMatrix = new THREE.Matrix4().makeBasis(tangent, up, outward);
+  anchor.setRotationFromMatrix(rotationMatrix);
+  if (rotationOffset) {
+    anchor.rotateY(rotationOffset);
+  }
+}
+
 function prepareDecorModelMaterials(object) {
   object.traverse((child) => {
     if (!child.isMesh || !child.material) return;
@@ -2848,27 +3585,27 @@ async function createShellBorder(radius, y, count, options = {}) {
   const template = await loadShellBorderTemplate(src, shellLoader);
   const shellScale = scale ?? getShellScaleForCount(template, radius, count, overlap);
   const border = new THREE.Group();
-  const up = new THREE.Vector3(0, 1, 0);
 
   for (let i = 0; i < count; i += 1) {
     const angle = (i / count) * Math.PI * 2;
     const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
     const tangent = new THREE.Vector3(-Math.sin(angle), 0, Math.cos(angle));
+    const anchor = new THREE.Group();
     const shell = template.clone(true);
 
-    shell.position.set(
+    anchor.position.set(
       outward.x * (radius + radialOffset),
       y,
       outward.z * (radius + radialOffset)
     );
+    orientShellAnchorAlongPerimeter(anchor, outward, tangent, rotationOffset);
 
-    const rotationMatrix = new THREE.Matrix4().makeBasis(tangent, up, outward);
-    shell.setRotationFromMatrix(rotationMatrix);
-    shell.rotateY(rotationOffset);
+    shell.position.set(0, 0, 0);
     shell.scale.set(shellScale * overlap, shellScale * 1.08, shellScale * 1.12);
 
     applyShellBorderMaterial(shell, color);
-    border.add(shell);
+    anchor.add(shell);
+    border.add(anchor);
   }
 
   border.userData.isShellBorder = true;
@@ -3007,24 +3744,31 @@ async function addShellBorderToTier(tier, edge = null) {
   const y = getTierLocalEdgeY(entry, shellEdge);
   const count = getShellCountForTier(entry, radius);
   const scale = getShellScaleForCount(template, radius, count);
-  const up = new THREE.Vector3(0, 1, 0);
 
   for (let i = 0; i < count; i += 1) {
     const angle = (i / count) * Math.PI * 2;
     const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
     const tangent = new THREE.Vector3(-Math.sin(angle), 0, Math.cos(angle));
+    const anchor = new THREE.Group();
     const shell = template.clone(true);
 
-    shell.position.set(outward.x * radius, y, outward.z * radius);
+    anchor.position.set(outward.x * radius, y, outward.z * radius);
+    orientShellAnchorAlongPerimeter(anchor, outward, tangent);
+    anchor.userData.isShellBorder = true;
+    anchor.userData.partIndex = entry.partIndex;
 
-    const rotationMatrix = new THREE.Matrix4().makeBasis(tangent, up, outward);
-    shell.setRotationFromMatrix(rotationMatrix);
+    shell.position.set(0, 0, 0);
     shell.scale.set(scale * SHELL_BORDER_OVERLAP, scale * 1.08, scale * 1.12);
     shell.userData.isShellBorder = true;
     shell.userData.partIndex = entry.partIndex;
+    shell.traverse((child) => {
+      child.userData.partIndex = entry.partIndex;
+      child.userData.isShellBorder = true;
+    });
 
     applyShellBorderMaterial(shell);
-    decorGroup.add(shell);
+    anchor.add(shell);
+    decorGroup.add(anchor);
   }
 
   entry.decorType = SHELL_BORDER_DECOR;
@@ -3096,6 +3840,62 @@ async function addSwirlsToTier(tier, count = DEFAULT_SWIRL_COUNT) {
   entry.swirlCount = swirlCount;
   entry.cherries = shouldAddCherries;
   return decorGroup;
+}
+
+function clearCupcakeSwirls(entry) {
+  if (!entry?.cupcakeSwirlGroup) return;
+
+  entry.object.remove(entry.cupcakeSwirlGroup);
+  disposeDecorMaterialOnly(entry.cupcakeSwirlGroup);
+  entry.cupcakeSwirlGroup = null;
+}
+
+async function syncCupcakeFrostingForIndex(index) {
+  const entry = cakeObjects.find((cakeObject) => cakeObject.partIndex === index);
+  const selection = customizerPreviewSelections[index];
+  if (!entry || entry.kind !== "cupcakes" || !selection) return;
+
+  entry.cupcakeFrostingSyncId = (entry.cupcakeFrostingSyncId || 0) + 1;
+  const syncId = entry.cupcakeFrostingSyncId;
+  clearCupcakeSwirls(entry);
+
+  if (!selection.frosting) return;
+
+  const template = await loadSwirlModel();
+  if (entry.cupcakeFrostingSyncId !== syncId) return;
+
+  const swirlGroup = new THREE.Group();
+  swirlGroup.name = `cupcakeSwirls-${index}`;
+  swirlGroup.userData.partIndex = index;
+  swirlGroup.userData.kind = "cupcakes";
+  const swirlSize = getObjectSize(template);
+  const swirlFootprint = Math.max(swirlSize.x, swirlSize.z, 0.001);
+  const color = frostingColorMap[selection.frosting] || DEFAULT_SHELL_FROSTING_COLOR;
+
+  (entry.object.userData.cupcakeAnchors || []).forEach((anchor, anchorIndex) => {
+    const swirl = template.clone(true);
+    const scale = Math.max(0.029, Math.min((anchor.radius * 1.1) / swirlFootprint, 0.086));
+
+    swirl.position.set(
+      anchor.position.x,
+      anchor.position.y + anchor.height - 0.004,
+      anchor.position.z
+    );
+    swirl.rotation.y = (anchorIndex % 4) * 0.35;
+    swirl.scale.setScalar(scale);
+    swirl.userData.isCupcakeFrosting = true;
+    swirl.userData.partIndex = index;
+    swirl.traverse((child) => {
+      child.userData.partIndex = index;
+      child.userData.kind = "cupcakes";
+    });
+
+    applyShellBorderMaterial(swirl, color);
+    swirlGroup.add(swirl);
+  });
+
+  entry.object.add(swirlGroup);
+  entry.cupcakeSwirlGroup = swirlGroup;
 }
 
 async function syncDecorForIndex(index) {
@@ -3201,7 +4001,7 @@ function positionOuterFrostingForEntry(entry) {
   entry.outerFrostingObject.position.set(
     (entry.currentX ?? entry.homeX ?? 0) + offset.x,
     (entry.stackY ?? 0) + offset.y,
-    offset.z
+    (entry.currentZ ?? entry.homeZ ?? 0) + offset.z
   );
 }
 
@@ -3260,23 +4060,48 @@ function setActiveCakeTier(partIndex) {
     ? customizerPreviewSelections[visibleBackupTierIndex]?.kind
     : null;
   const backupInView = visibleBackupTierIndex !== null && isBackupKind(visibleBackupKind);
+  const cupcakeStackInView = isCupcakeStackSelected();
+  const selectedCupcakeClusterIndex = getActiveCupcakeClusterIndex();
+  const selectedCupcakeClusterOffset = getActiveCupcakeClusterOffset();
+  const cupcakeHiddenOffset = Math.max(getCupcakeStackMetrics(cakeObjects.filter((entry) => isCupcakeKind(entry.kind))).width + 1.4, 1.8);
+  shiftCustomizerCameraTarget(new THREE.Vector3(0, cupcakeStackInView ? 0.34 : 0.46, cupcakeStackInView ? 0.24 : 0));
 
   cakeObjects.forEach((entry) => {
     const { object, partIndex: objectPartIndex, kind } = entry;
     const isActive = partIndex !== null && objectPartIndex === partIndex;
     const selection = customizerPreviewSelections[objectPartIndex] || {};
+    entry.targetZ = entry.homeZ ?? 0;
 
     if (isBackupKind(kind)) {
-      object.visible = true;
+      object.visible = backupInView && visibleBackupTierIndex === objectPartIndex;
       entry.targetX = visibleBackupTierIndex === objectPartIndex ? entry.centerX : entry.hiddenX;
+    } else if (isCupcakeKind(kind)) {
+      object.visible = cupcakeStackInView;
+      const clusterOffset = entry.clusterOffsetX || 0;
+      const clusterSide = (entry.clusterIndex || 0) < (selectedCupcakeClusterIndex || 0) ? -1 : 1;
+      entry.centerX = clusterOffset - selectedCupcakeClusterOffset;
+      entry.hiddenX = clusterSide * cupcakeHiddenOffset;
+      entry.targetX = cupcakeStackInView
+        ? entry.centerX
+        : entry.hiddenX;
     } else {
-      entry.targetX = backupInView
+      object.visible = !backupInView && !cupcakeStackInView;
+      entry.targetX = backupInView || cupcakeStackInView
         ? entry.hiddenX
         : entry.centerX ?? entry.homeX;
     }
 
     applyTierColorsToObject(object, selection);
     applyOuterFrostingColor(entry.outerFrostingObject, selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR);
+    if (entry.outerFrostingObject) {
+      entry.outerFrostingObject.visible = object.visible && !entry.peeking;
+    }
+    if (entry.decorGroup) {
+      entry.decorGroup.visible = object.visible && !entry.peeking;
+    }
+    if (entry.cupcakeSwirlGroup) {
+      entry.cupcakeSwirlGroup.visible = object.visible;
+    }
 
     object.scale.setScalar(entry.baseScale ?? 1);
 
@@ -3294,6 +4119,17 @@ function setActiveCakeTier(partIndex) {
       child.material.emissiveIntensity = isActive ? 0.11 : isVisibleBackup ? 0.03 : 0;
     });
   });
+
+  setFocusObject(partIndex !== null
+    ? cakeObjects.find((entry) => entry.partIndex === partIndex) || null
+    : null);
+
+  if (cupcakeStackInView) {
+    enforceCupcakeEditModelVisibility();
+    syncCupcakePreviewWindowVisibility(true);
+  } else {
+    syncCupcakePreviewWindowVisibility(false);
+  }
 
   syncTierRowStates();
 }
@@ -3476,14 +4312,14 @@ function initializeCakeFlow(guests, restoredState = null) {
     guestCountInput.value = guests;
   }
 
-const flavorPrices = {
+const flavorPrices = window.CakeSupplyPricing?.flavorPrices || {
   "Vanilla": 0,
   "Chocolate": 8,
   "Red Velvet": 10,
   "Lemon": 8
 };
 
-const fillingPrices = {
+const fillingPrices = window.CakeSupplyPricing?.fillingPrices || {
   "Vanilla Buttercream": 0,
   "Chocolate Ganache": 5,
   "Raspberry": 5,
@@ -3492,7 +4328,7 @@ const fillingPrices = {
   "Cream Cheese": 8
 };
 
-const frostingPrices = {
+const frostingPrices = window.CakeSupplyPricing?.frostingPrices || {
   "Vanilla Buttercream": 0,
   "Strawberry Cream Cheese": 0,
   "Chocolate Buttercream": 0,
@@ -3667,13 +4503,12 @@ const signatureFlavorOrder = [
   "horchata"
 ];
 
-const baseCakePrices = {
+const baseCakePrices = window.CakeSupplyPricing?.baseCakePrices || {
   '6" cake': 55,
   '8" cake': 75,
   '10" cake': 110,
   '12" cake': 145,
   '14" cake': 190,
-
   '1/4 sheet cake': 85,
   '1/2 sheet cake': 130,
   'full sheet cake': 220
@@ -3696,11 +4531,6 @@ function getCupcakeQuantityForServings(servings, maxQuantity = Infinity) {
 
 function getTieredRecommendationName(tierSizes) {
   return `${tierSizes.slice().sort((a, b) => a - b).map((size) => `${size}"`).join(" + ")} tiered cake`;
-}
-
-function getRecommendationCakeServings(recommendation) {
-  if (recommendation.type === "cupcakes") return 0;
-  return Math.max((recommendation.servings || 0) - (recommendation.cupcakeCount || 0), 0);
 }
 
 function getCupcakeSupplementScore(gap, cupcakeCount) {
@@ -3775,17 +4605,17 @@ function buildCupcakeRecommendations(guests) {
 
 function getBasePrice(recommendation) {
   if (recommendation.type === "cupcakes") {
-    return (recommendation.cupcakeCount || 0) * CUPCAKE_PRICE;
+    return getCupcakeBasePrice(recommendation.cupcakeCount);
   }
 
   if (recommendation.type === "single-cupcakes") {
-    return (tierBasePrices[recommendation.roundSize] || 0) + ((recommendation.cupcakeCount || 0) * CUPCAKE_PRICE);
+    return (tierBasePrices[recommendation.roundSize] || 0) + getCupcakeBasePrice(recommendation.cupcakeCount);
   }
 
   if (recommendation.type === "tiered-cupcakes") {
     const sizes = recommendation.tierSizes || (recommendation.name.match(/\d+/g) || []).map(Number).slice(0, -1);
     const tierPrice = sizes.reduce((total, size) => total + (tierBasePrices[size] || 0), 0);
-    return tierPrice + ((recommendation.cupcakeCount || 0) * CUPCAKE_PRICE);
+    return tierPrice + getCupcakeBasePrice(recommendation.cupcakeCount);
   }
 
   if (recommendation.type === "single" || recommendation.type === "single-sheet") {
@@ -3836,26 +4666,6 @@ function calculateCustomizationPrice(selections) {
   });
 
   return total;
-}
-
-function buildOrderSummaryText(recommendation, selections, totalPrice) {
-  let lines = [];
-  lines.push(`Cake Order Summary`);
-  lines.push(``);
-  lines.push(`Cake Option: ${recommendation.name}`);
-  lines.push(`Servings: ${recommendation.servings}`);
-  lines.push(``);
-
-  selections.forEach((selection, index) => {
-    lines.push(
-      `${selection.label}: Flavor - ${selection.flavor || "-"}, Filling - ${selection.filling || "-"}`
-    );
-  });
-
-  lines.push(``);
-  lines.push(`Total Price: $${totalPrice}`);
-
-  return lines.join("\n");
 }
 
 let recommendations = [];
@@ -4177,9 +4987,38 @@ requestAnimationFrame(() => {
   animateHeroPreviewIntoRecommendation(heroSnapshot, animationTargetRecommendation);
 });
 
-function showCustomizer(recommendation, restoredCustomizerState = null, openSummaryOnLoad = false) {
+const restoredRecommendation = getSavedRecommendationMatch();
+const restoredCustomizerView = restoredState?.customizerState?.currentView || restoredState?.view;
+if (restoredRecommendation && restoredCustomizerView === "customizer") {
+  showCustomizer(restoredRecommendation, restoredState.customizerState, false);
+  return;
+}
+
+if (restoredRecommendation && restoredCustomizerView === "summary") {
+  showCustomizer(restoredRecommendation, restoredState.customizerState, true);
+  return;
+}
+
+if (restoredRecommendation && restoredCustomizerView === "fulfillment") {
+  showCustomizer(restoredRecommendation, restoredState.customizerState, false, true);
+  return;
+}
+
+if (restoredRecommendation && restoredCustomizerView === "decor") {
+  showCustomizer(restoredRecommendation, restoredState.customizerState, false, false, true);
+  return;
+}
+
+function showCustomizer(recommendation, restoredCustomizerState = null, openSummaryOnLoad = false, openFulfillmentOnLoad = false, openDecorOnLoad = false) {
   showCustomizerPageView();
   document.getElementById("customizer").style.display = "block";
+  let currentCustomizerView = openSummaryOnLoad
+    ? "summary"
+    : openFulfillmentOnLoad
+      ? "fulfillment"
+      : openDecorOnLoad
+        ? "decor"
+        : "customizer";
 
   const customizer = document.getElementById("customizer");
   const visualHTML = getCustomizerVisualHTML(recommendation);
@@ -4205,6 +5044,7 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
 
     <div id="customizer-center">
       <div id="cake-builder-3d"></div>
+      <div id="cupcake-preview-window-stack" class="cupcake-preview-window-stack" hidden></div>
     </div>
 
     <div id="customizer-right">
@@ -4321,14 +5161,28 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
   </div>
 
   <div id="extra-backup-drawer" class="extra-backup-drawer accordion-section" data-accordion-section="backup">
-    <button id="extra-backup-toggle" type="button" class="extra-backup-toggle accordion-header" aria-expanded="false">Not Enough Cake?</button>
+    <button id="extra-backup-toggle" type="button" class="extra-backup-toggle accordion-header" aria-expanded="false">Add Extra Servings</button>
     <div id="extra-backup-content" class="extra-backup-content accordion-content">
       <div class="extra-backup-shell">
         <div class="extra-backup-stage">
           <div class="extra-backup-size-list">
+            <p class="extra-backup-helper">Choose an add-on if you want a little more cake on hand.</p>
             <div class="extra-backup-size-buttons">
-              <button type="button" class="extra-backup-size-btn" data-size="6" aria-label='6 inch backup cake'>
-                <span class="extra-backup-size-name">6"</span>
+              <button type="button" class="extra-backup-size-btn extra-cupcake-size-btn" data-cupcakes="12" aria-label="Add 1 dozen cupcakes, adds 12 servings">
+                <span class="extra-backup-size-copy">
+                  <span class="extra-backup-size-name extra-cupcake-size-name">1 Dozen Cupcakes</span>
+                  <span class="extra-backup-size-servings">Adds 12 servings</span>
+                  <span class="extra-backup-size-price">$${formatMoney(CUPCAKE_DOZEN_PRICE)}</span>
+                </span>
+                <span class="extra-backup-cupcake-preview" data-extra-cupcake-preview aria-hidden="true"></span>
+                <span class="extra-backup-add-label">Add</span>
+              </button>
+              <button type="button" class="extra-backup-size-btn" data-size="6" aria-label='Add 6 inch round cake, adds 10 servings'>
+                <span class="extra-backup-size-copy">
+                  <span class="extra-backup-size-name">6" Round</span>
+                  <span class="extra-backup-size-servings">Adds 10 servings</span>
+                  <span class="extra-backup-size-price">$${formatMoney(baseCakePrices['6" cake'] || 0)}</span>
+                </span>
                 <model-viewer
                   class="extra-backup-size-visual extra-backup-size-visual-6"
                   src="models/tier_6.glb"
@@ -4338,9 +5192,14 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
                   interaction-prompt="none"
                   aria-hidden="true">
                 </model-viewer>
+                <span class="extra-backup-add-label">Add</span>
               </button>
-              <button type="button" class="extra-backup-size-btn" data-size="8" aria-label='8 inch backup cake'>
-                <span class="extra-backup-size-name">8"</span>
+              <button type="button" class="extra-backup-size-btn" data-size="8" aria-label='Add 8 inch round cake, adds 18 servings'>
+                <span class="extra-backup-size-copy">
+                  <span class="extra-backup-size-name">8" Round</span>
+                  <span class="extra-backup-size-servings">Adds 18 servings</span>
+                  <span class="extra-backup-size-price">$${formatMoney(baseCakePrices['8" cake'] || 0)}</span>
+                </span>
                 <model-viewer
                   class="extra-backup-size-visual extra-backup-size-visual-8"
                   src="models/tier_8.glb"
@@ -4350,9 +5209,14 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
                   interaction-prompt="none"
                   aria-hidden="true">
                 </model-viewer>
+                <span class="extra-backup-add-label">Add</span>
               </button>
-              <button type="button" class="extra-backup-size-btn" data-size="10" aria-label='10 inch backup cake'>
-                <span class="extra-backup-size-name">10"</span>
+              <button type="button" class="extra-backup-size-btn" data-size="10" aria-label='Add 10 inch round cake, adds 32 servings'>
+                <span class="extra-backup-size-copy">
+                  <span class="extra-backup-size-name">10" Round</span>
+                  <span class="extra-backup-size-servings">Adds 32 servings</span>
+                  <span class="extra-backup-size-price">$${formatMoney(baseCakePrices['10" cake'] || 0)}</span>
+                </span>
                 <model-viewer
                   class="extra-backup-size-visual extra-backup-size-visual-10"
                   src="models/tier_10.glb"
@@ -4362,9 +5226,14 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
                   interaction-prompt="none"
                   aria-hidden="true">
                 </model-viewer>
+                <span class="extra-backup-add-label">Add</span>
               </button>
-              <button type="button" class="extra-backup-size-btn" data-size="12" aria-label='12 inch backup cake'>
-                <span class="extra-backup-size-name">12"</span>
+              <button type="button" class="extra-backup-size-btn" data-size="12" aria-label='Add 12 inch round cake, adds 47 servings'>
+                <span class="extra-backup-size-copy">
+                  <span class="extra-backup-size-name">12" Round</span>
+                  <span class="extra-backup-size-servings">Adds 47 servings</span>
+                  <span class="extra-backup-size-price">$${formatMoney(baseCakePrices['12" cake'] || 0)}</span>
+                </span>
                 <model-viewer
                   class="extra-backup-size-visual extra-backup-size-visual-12"
                   src="models/tier_12.glb"
@@ -4374,9 +5243,14 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
                   interaction-prompt="none"
                   aria-hidden="true">
                 </model-viewer>
+                <span class="extra-backup-add-label">Add</span>
               </button>
-              <button type="button" class="extra-backup-size-btn" data-size="14" aria-label='14 inch backup cake'>
-                <span class="extra-backup-size-name">14"</span>
+              <button type="button" class="extra-backup-size-btn" data-size="14" aria-label='Add 14 inch round cake, adds 70 servings'>
+                <span class="extra-backup-size-copy">
+                  <span class="extra-backup-size-name">14" Round</span>
+                  <span class="extra-backup-size-servings">Adds 70 servings</span>
+                  <span class="extra-backup-size-price">$${formatMoney(baseCakePrices['14" cake'] || 0)}</span>
+                </span>
                 <model-viewer
                   class="extra-backup-size-visual extra-backup-size-visual-14"
                   src="models/tier_14.glb"
@@ -4386,6 +5260,7 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
                   interaction-prompt="none"
                   aria-hidden="true">
                 </model-viewer>
+                <span class="extra-backup-add-label">Add</span>
               </button>
             </div>
           </div>
@@ -4396,59 +5271,82 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
   </div>
 
   <div class="customizer-panel" id="decor-panel" hidden>
-    <div class="decor-panel-header">
-      <h3>Decoration</h3>
-    </div>
-    <div id="decor-content" class="decor-content decor-screen-content">
-      <div class="decor-shell">
-        <div class="decor-stage">
-          <div class="decor-control-stack">
-            <section class="decor-control-group">
-              <label class="decor-field-label" for="outer-frosting-select">Finish</label>
-              <select id="outer-frosting-select" class="decor-select">
-                <option value="">No outer layer</option>
-                <option value="${OUTER_FROSTING_DECOR}">Smooth outer layer</option>
-              </select>
-              <div class="decor-color-row" aria-label="Outer frosting color">
-                <button type="button" class="decor-color-swatch is-selected" data-decor-color="#fff7c7" style="--swatch-color: #fff7c7;" aria-label="Vanilla outer frosting"></button>
-                <button type="button" class="decor-color-swatch" data-decor-color="#f8c7d0" style="--swatch-color: #f8c7d0;" aria-label="Pink outer frosting"></button>
-                <button type="button" class="decor-color-swatch" data-decor-color="#b9c7f2" style="--swatch-color: #b9c7f2;" aria-label="Blue outer frosting"></button>
-                <button type="button" class="decor-color-swatch" data-decor-color="#c9dfbd" style="--swatch-color: #c9dfbd;" aria-label="Green outer frosting"></button>
-                <button type="button" class="decor-color-swatch" data-decor-color="#8b6659" style="--swatch-color: #8b6659;" aria-label="Chocolate outer frosting"></button>
-                <label class="decor-custom-color-label" for="outer-frosting-color">Custom</label>
-                <input id="outer-frosting-color" class="decor-color-input" type="color" value="${DEFAULT_OUTER_FROSTING_COLOR}" aria-label="Custom outer frosting color">
-              </div>
-            </section>
+    <div id="decor-content" class="decor-screen-content">
+      <div class="decor-main-section accordion-section expanded" data-accordion-section="decor">
+        <button id="decor-toggle" type="button" class="decor-toggle accordion-header" aria-expanded="true">Decoration</button>
+        <div class="decor-content accordion-content">
+          <div class="decor-shell">
+            <div class="decor-stage">
+              <div class="decor-control-stack">
+                <section class="decor-control-group">
+                  <label class="decor-field-label" for="outer-frosting-select">Finish</label>
+                  <select id="outer-frosting-select" class="decor-select">
+                    <option value="">No outer layer</option>
+                    <option value="${OUTER_FROSTING_DECOR}">Smooth outer layer</option>
+                  </select>
+                  <div class="decor-color-row" aria-label="Outer frosting color">
+                    <button type="button" class="decor-color-swatch is-selected" data-decor-color="#fff7c7" style="--swatch-color: #fff7c7;" aria-label="Vanilla outer frosting"></button>
+                    <button type="button" class="decor-color-swatch" data-decor-color="#f8c7d0" style="--swatch-color: #f8c7d0;" aria-label="Pink outer frosting"></button>
+                    <button type="button" class="decor-color-swatch" data-decor-color="#b9c7f2" style="--swatch-color: #b9c7f2;" aria-label="Blue outer frosting"></button>
+                    <button type="button" class="decor-color-swatch" data-decor-color="#c9dfbd" style="--swatch-color: #c9dfbd;" aria-label="Green outer frosting"></button>
+                    <button type="button" class="decor-color-swatch" data-decor-color="#8b6659" style="--swatch-color: #8b6659;" aria-label="Chocolate outer frosting"></button>
+                    <label class="decor-custom-color-label" for="outer-frosting-color">Custom</label>
+                    <input id="outer-frosting-color" class="decor-color-input" type="color" value="${DEFAULT_OUTER_FROSTING_COLOR}" aria-label="Custom outer frosting color">
+                  </div>
+                </section>
 
-            <section class="decor-control-group">
-              <div class="decor-field-label">Decorations</div>
-              <div class="decor-option-buttons" role="group" aria-label="Decorations">
-                <button id="shell-border-btn" type="button" class="decor-option-btn" data-decor="${SHELL_BORDER_DECOR}" aria-pressed="false">Shell Border</button>
-                <button id="swirls-btn" type="button" class="decor-option-btn" data-decor="${SWIRL_DECOR}" aria-pressed="false">Swirls</button>
-                <button id="cherries-btn" type="button" class="decor-option-btn cherry-option-btn" aria-pressed="false">Cherries</button>
-              </div>
-            </section>
+                <section class="decor-control-group">
+                  <div class="decor-field-label">Decorations</div>
+                  <div class="decor-option-buttons" role="group" aria-label="Decorations">
+                    <button id="shell-border-btn" type="button" class="decor-option-btn" data-decor="${SHELL_BORDER_DECOR}" aria-pressed="false">Shell Border</button>
+                    <button id="swirls-btn" type="button" class="decor-option-btn" data-decor="${SWIRL_DECOR}" aria-pressed="false">Swirls</button>
+                    <button id="cherries-btn" type="button" class="decor-option-btn cherry-option-btn" aria-pressed="false">Cherries</button>
+                  </div>
+                </section>
 
-            <section class="decor-control-group shell-border-placement-group" hidden>
-              <div class="decor-field-label">Placement</div>
-              <div class="shell-border-edge-controls" role="group" aria-label="Shell border edge">
-                <button type="button" class="shell-border-edge-btn is-selected" data-shell-edge="top" aria-pressed="true">Top edge</button>
-                <button type="button" class="shell-border-edge-btn" data-shell-edge="bottom" aria-pressed="false">Bottom edge</button>
-              </div>
-            </section>
+                <section class="decor-control-group shell-border-placement-group" hidden>
+                  <div class="decor-field-label">Placement</div>
+                  <div class="shell-border-edge-controls" role="group" aria-label="Shell border edge">
+                    <button type="button" class="shell-border-edge-btn is-selected" data-shell-edge="top" aria-pressed="true">Top edge</button>
+                    <button type="button" class="shell-border-edge-btn" data-shell-edge="bottom" aria-pressed="false">Bottom edge</button>
+                  </div>
+                </section>
 
-            <section class="decor-control-group swirl-quantity-group" hidden>
-              <div class="decor-field-label">Quantity</div>
-              <div class="swirl-quantity-controls" role="group" aria-label="Swirl quantity">
-                <button type="button" class="swirl-quantity-btn" data-swirl-count="6" aria-pressed="false">6</button>
-                <button type="button" class="swirl-quantity-btn is-selected" data-swirl-count="8" aria-pressed="true">8</button>
-                <button type="button" class="swirl-quantity-btn" data-swirl-count="12" aria-pressed="false">12</button>
+                <section class="decor-control-group swirl-quantity-group" hidden>
+                  <div class="decor-field-label">Quantity</div>
+                  <div class="swirl-quantity-controls" role="group" aria-label="Swirl quantity">
+                    <button type="button" class="swirl-quantity-btn" data-swirl-count="6" aria-pressed="false">6</button>
+                    <button type="button" class="swirl-quantity-btn is-selected" data-swirl-count="8" aria-pressed="true">8</button>
+                    <button type="button" class="swirl-quantity-btn" data-swirl-count="12" aria-pressed="false">12</button>
+                  </div>
+                </section>
               </div>
-            </section>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="edible-image-drawer" class="edible-image-drawer accordion-section" data-accordion-section="edible-image">
+        <button id="edible-image-toggle" type="button" class="edible-image-toggle accordion-header" aria-expanded="false">Edible Image</button>
+        <div id="edible-image-content" class="edible-image-content accordion-content">
+          <div class="edible-image-shell">
+            <label class="edible-image-check">
+              <input id="edible-image-requested" type="checkbox">
+              <span>Add an edible image</span>
+            </label>
+            <label class="edible-image-field">
+              <span class="decor-field-label">Image file</span>
+              <input id="edible-image-file" class="edible-image-input" type="file" accept="image/*">
+            </label>
+            <label class="edible-image-field">
+              <span class="decor-field-label">Notes</span>
+              <textarea id="edible-image-notes" class="edible-image-textarea" rows="3" placeholder="Describe placement, size, or image details"></textarea>
+            </label>
           </div>
         </div>
       </div>
     </div>
+    <div id="fulfillment-panel-content" class="fulfillment-panel-content" hidden></div>
   </div>
 
   <button id="order-summary-btn" class="order-summary-btn" type="button">Decorate Cake</button>
@@ -4459,6 +5357,11 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
 `;
 
 document.getElementById("back-btn").addEventListener("click", () => {
+  if (document.getElementById("customizer-layout")?.classList.contains("is-fulfillment-step")) {
+    setCustomizerStep("decor");
+    return;
+  }
+
   if (decorPanel && !decorPanel.hidden) {
     setCustomizerStep("flavor");
     return;
@@ -4512,13 +5415,17 @@ signatureSelect.addEventListener("change", function () {
 });
 
 
-const parts = getRecommendationParts(recommendation);
+const parts = getCustomizerParts(recommendation);
 
 const orderSections = document.getElementById("order-sections");
 let requiredDate = restoredCustomizerState?.requiredDate || "";
 let requiredTime = restoredCustomizerState?.requiredTime || "";
 let fulfillmentMethod = restoredCustomizerState?.fulfillmentMethod === "delivery" ? "delivery" : "pickup";
 let fulfillmentLocation = restoredCustomizerState?.fulfillmentLocation || "";
+let fulfillmentPanelStep = "method";
+let customerName = restoredCustomizerState?.customerName || "";
+let customerEmail = restoredCustomizerState?.customerEmail || "";
+let customerPhone = restoredCustomizerState?.customerPhone || "";
 
 let activeTierIndex = Number.isInteger(restoredCustomizerState?.activeTierIndex)
   ? restoredCustomizerState.activeTierIndex
@@ -4543,6 +5450,10 @@ const shellBorderPlacementGroup = document.querySelector(".shell-border-placemen
 const swirlQuantityControls = document.querySelector(".swirl-quantity-controls");
 const swirlQuantityGroup = document.querySelector(".swirl-quantity-group");
 const swirlQuantityButtons = document.querySelectorAll(".swirl-quantity-btn");
+const edibleImageToggle = document.getElementById("edible-image-toggle");
+const edibleImageRequestedInput = document.getElementById("edible-image-requested");
+const edibleImageFileInput = document.getElementById("edible-image-file");
+const edibleImageNotesInput = document.getElementById("edible-image-notes");
 const extraBackupToggle = document.getElementById("extra-backup-toggle");
 const extraBackupContent = document.getElementById("extra-backup-content");
 const extraBackupSizeButtons = document.querySelectorAll(".extra-backup-size-btn");
@@ -4551,12 +5462,18 @@ const extraBackupSizeVisuals = document.querySelectorAll(".extra-backup-size-vis
 decorContent.hidden = false;
 extraBackupContent.hidden = false;
 extraBackupSizeVisuals.forEach(applyBlankTierColorsToModelViewer);
+document.querySelectorAll("[data-extra-cupcake-preview]").forEach((preview) => {
+  requestAnimationFrame(() => initCupcakePreview3D(preview, CUPCAKE_QUANTITY_STEP));
+});
 
-const selections = Array.isArray(restoredCustomizerState?.selections) && restoredCustomizerState.selections.length
+const selections = normalizeSingleDozenCupcakeSelections(Array.isArray(restoredCustomizerState?.selections) && restoredCustomizerState.selections.length
   ? restoredCustomizerState.selections.map((selection) => ({
       label: selection.label,
       size: selection.size,
       cupcakeCount: selection.cupcakeCount,
+      cupcakeDozenIndex: selection.cupcakeDozenIndex,
+      cupcakeDozenCount: selection.cupcakeDozenCount,
+      extraCupcakes: selection.extraCupcakes === true,
       kind: selection.kind,
       flavor: selection.flavor || "",
       frosting: selection.frosting || "",
@@ -4567,12 +5484,18 @@ const selections = Array.isArray(restoredCustomizerState?.selections) && restore
       swirlCount: normalizeSwirlCount(selection.swirlCount),
       cherries: selection.cherries === true,
       outerFrosting: selection.outerFrosting || "",
-      outerFrostingColor: selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR
+      outerFrostingColor: selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR,
+      edibleImage: selection.edibleImage === true,
+      edibleImageFileName: selection.edibleImageFileName || "",
+      edibleImageNotes: selection.edibleImageNotes || ""
     }))
   : parts.map(part => ({
       label: part.label,
       size: part.size,
       cupcakeCount: part.cupcakeCount,
+      cupcakeDozenIndex: part.cupcakeDozenIndex,
+      cupcakeDozenCount: part.cupcakeDozenCount,
+      extraCupcakes: part.extraCupcakes === true,
       kind: part.kind,
       flavor: "",
       frosting: "",
@@ -4583,8 +5506,15 @@ const selections = Array.isArray(restoredCustomizerState?.selections) && restore
       swirlCount: DEFAULT_SWIRL_COUNT,
       cherries: false,
       outerFrosting: "",
-      outerFrostingColor: DEFAULT_OUTER_FROSTING_COLOR
-    }));
+      outerFrostingColor: DEFAULT_OUTER_FROSTING_COLOR,
+      edibleImage: false,
+      edibleImageFileName: "",
+      edibleImageNotes: ""
+    })));
+
+if (activeTierIndex !== null && !selections[activeTierIndex]) {
+  activeTierIndex = selections.length ? 0 : null;
+}
 
 customizerPreviewSelections = selections;
 
@@ -4597,34 +5527,48 @@ function getExtraBackupSelections(selectionList = selections) {
 }
 
 function getCurrentBuilderParts() {
-  return getBaseCustomizerSelections().map((selection) => {
+  return selections.flatMap((selection, selectionIndex) => {
+    if (selection.kind === "extra-backup") return [];
+
     const matchingOriginalPart = parts.find((part) => {
       return part.kind === selection.kind
         && part.label === selection.label
         && (part.size || null) === (selection.size || null);
     });
 
-    return {
+    return [{
       ...(matchingOriginalPart || {}),
+      selectionIndex,
       kind: selection.kind,
       size: selection.size,
       cupcakeCount: selection.cupcakeCount,
+      cupcakeDozenIndex: selection.cupcakeDozenIndex,
+      cupcakeDozenCount: selection.cupcakeDozenCount,
+      extraCupcakes: selection.extraCupcakes === true,
       label: selection.label
-    };
+    }];
   });
 }
 
-function persistCustomizerState(view = "customizer") {
+function persistCustomizerState(view = currentCustomizerView) {
+  currentCustomizerView = view;
   setSavedAppState(getRecommendationStatePayload(recommendation, {
+    currentView: view,
     activeTierIndex,
     requiredDate,
     requiredTime,
     fulfillmentMethod,
     fulfillmentLocation,
+    customerName,
+    customerEmail,
+    customerPhone,
     selections: selections.map((selection) => ({
       label: selection.label,
       size: selection.size,
       cupcakeCount: selection.cupcakeCount,
+      cupcakeDozenIndex: selection.cupcakeDozenIndex,
+      cupcakeDozenCount: selection.cupcakeDozenCount,
+      extraCupcakes: selection.extraCupcakes === true,
       kind: selection.kind,
       flavor: selection.flavor || "",
       frosting: selection.frosting || "",
@@ -4635,37 +5579,76 @@ function persistCustomizerState(view = "customizer") {
       swirlCount: normalizeSwirlCount(selection.swirlCount),
       cherries: selection.cherries === true,
       outerFrosting: selection.outerFrosting || "",
-      outerFrostingColor: selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR
+      outerFrostingColor: selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR,
+      edibleImage: selection.edibleImage === true,
+      edibleImageFileName: selection.edibleImageFileName || "",
+      edibleImageNotes: selection.edibleImageNotes || ""
     }))
   }, view));
 }
 
 function setCustomizerStep(step = "flavor") {
   const isDecorStep = step === "decor";
+  const isFulfillmentStep = step === "fulfillment";
+  currentCustomizerView = isFulfillmentStep ? "fulfillment" : isDecorStep ? "decor" : "customizer";
+  const layout = document.getElementById("customizer-layout");
+  const decorScreen = document.getElementById("decor-content");
+  const fulfillmentScreen = document.getElementById("fulfillment-panel-content");
+  const decorPanelTitle = document.getElementById("decor-toggle");
 
   if (flavorPanel) {
-    flavorPanel.hidden = isDecorStep;
+    flavorPanel.hidden = isDecorStep || isFulfillmentStep;
   }
   if (decorPanel) {
-    decorPanel.hidden = !isDecorStep;
+    decorPanel.hidden = !(isDecorStep || isFulfillmentStep);
   }
+  if (decorScreen) {
+    decorScreen.hidden = isFulfillmentStep;
+  }
+  if (fulfillmentScreen) {
+    fulfillmentScreen.hidden = !isFulfillmentStep;
+  }
+  layout?.classList.toggle("is-fulfillment-step", isFulfillmentStep);
   if (orderSummaryBtn) {
-    orderSummaryBtn.hidden = isDecorStep;
+    orderSummaryBtn.hidden = isDecorStep || isFulfillmentStep;
   }
   if (decorOrderSummaryBtn) {
-    decorOrderSummaryBtn.hidden = !isDecorStep;
+    decorOrderSummaryBtn.hidden = !isDecorStep || isFulfillmentStep;
+  }
+  if (decorPanelTitle) {
+    decorPanelTitle.textContent = isFulfillmentStep ? "" : "Decoration";
+  }
+  if (controls) {
+    controls.enabled = !isFulfillmentStep;
+  }
+  if (renderer?.domElement) {
+    renderer.domElement.style.cursor = "pointer";
   }
 
   if (isDecorStep) {
+    fulfillmentPanelStep = "method";
     syncDecorButtons(activeTierIndex);
+  } else if (isFulfillmentStep) {
+    fulfillmentPanelStep = "method";
+    renderFulfillmentPanel();
+    showFinishedOrderModel();
+    requestAnimationFrame(() => {
+      resizeCustomizerRenderer();
+      frameFinishedOrderModel();
+    });
+    setTimeout(() => {
+      resizeCustomizerRenderer();
+      frameFinishedOrderModel();
+    }, 480);
   } else {
+    requestAnimationFrame(resizeCustomizerRenderer);
     setAccordionSection("flavor");
     if (activeTierIndex !== null) {
       selectTier(activeTierIndex);
     }
   }
 
-  persistCustomizerState(isDecorStep ? "decor" : "customizer");
+  persistCustomizerState(isFulfillmentStep ? "fulfillment" : isDecorStep ? "decor" : "customizer");
 }
 
 window.setCustomizerStep = setCustomizerStep;
@@ -4682,7 +5665,7 @@ function getSelectionBasePrice(selection) {
   if (!selection) return 0;
 
   if (selection.kind === "cupcakes") {
-    return (selection.cupcakeCount || 0) * CUPCAKE_PRICE;
+    return getCupcakeBasePrice(selection.cupcakeCount);
   }
 
   if (selection.kind === "main" || selection.kind === "backup" || selection.kind === "extra-backup") {
@@ -4707,6 +5690,46 @@ function getSelectionExtras(selection) {
   };
 }
 
+function getStructuredPriceFields(selectionList, options = {}) {
+  const basePrice = getSelectionsBaseTotal(selectionList);
+  const upcharges = selectionList.reduce((summary, selection) => {
+    const extras = getSelectionExtras(selection);
+    summary.flavorUpcharges += extras.flavor;
+    summary.fillingUpcharges += extras.filling;
+    summary.decorUpcharges += extras.frosting + extras.decor;
+    return summary;
+  }, {
+    flavorUpcharges: 0,
+    fillingUpcharges: 0,
+    decorUpcharges: 0
+  });
+  const deliveryFee = Number(options.deliveryFee || 0);
+  const discount = Number(options.discount || 0);
+  const depositPaid = Number(options.depositPaid || 0);
+  const totalPrice = Math.max(
+    basePrice +
+    upcharges.flavorUpcharges +
+    upcharges.fillingUpcharges +
+    upcharges.decorUpcharges +
+    deliveryFee -
+    discount,
+    0
+  );
+  const balanceDue = Math.max(totalPrice - depositPaid, 0);
+
+  return {
+    basePrice,
+    flavorUpcharges: upcharges.flavorUpcharges,
+    fillingUpcharges: upcharges.fillingUpcharges,
+    decorUpcharges: upcharges.decorUpcharges,
+    deliveryFee,
+    discount,
+    depositPaid,
+    balanceDue,
+    totalPrice
+  };
+}
+
 function getSelectionServings(selection) {
   if (!selection) return 0;
 
@@ -4725,6 +5748,245 @@ function getSelectionServings(selection) {
   return 0;
 }
 
+function buildOrderFromCustomizer() {
+  const summarySelections = selections.map((selection) => ({ ...selection }));
+  const prices = getStructuredPriceFields(summarySelections);
+  const now = new Date();
+  const requiredDateValue = requiredDate ? new Date(`${requiredDate}T12:00:00`) : now;
+  const promiseDate = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  }).format(requiredDateValue);
+  const promiseTime = requiredTime
+    ? new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        minute: "2-digit"
+      }).format(new Date(`2000-01-01T${requiredTime}`))
+    : "";
+  const orderedDate = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  }).format(now);
+  const fulfillmentLabel = fulfillmentMethod === "delivery" ? "Delivery" : "Pickup";
+  const submittedCustomerName = customerName.trim() || "Customer Name";
+  const submittedCustomerEmail = customerEmail.trim();
+  const submittedCustomerPhone = customerPhone.trim() || "(000-000-0000)";
+  const primarySelection = summarySelections[0] || {};
+  const orderItems = summarySelections.map((selection) => {
+    const extras = getSelectionExtras(selection);
+    const basePrice = getSelectionBasePrice(selection);
+    const totalPrice = basePrice + extras.flavor + extras.frosting + extras.filling + extras.decor;
+
+    return {
+      quantity: "1",
+      label: selection.label || "",
+      description: selection.label || "",
+      cupcakeDozenIndex: selection.cupcakeDozenIndex,
+      cupcakeDozenCount: selection.cupcakeDozenCount,
+      flavor: selection.flavor || "",
+      frosting: selection.frosting || "",
+      filling: selection.filling || "",
+      signature: selection.signature || "",
+      decor: selection.decor || "",
+      shellBorderEdge: selection.shellBorderEdge || "",
+      swirlCount: selection.swirlCount || 0,
+      cherries: selection.cherries === true,
+      outerFrosting: selection.outerFrosting || "",
+      outerFrostingColor: selection.outerFrostingColor || "",
+      edibleImage: selection.edibleImage === true,
+      edibleImageFileName: selection.edibleImageFileName || "",
+      edibleImageNotes: selection.edibleImageNotes || "",
+      basePrice,
+      flavorUpcharges: extras.flavor,
+      fillingUpcharges: extras.filling,
+      decorUpcharges: extras.frosting + extras.decor,
+      totalPrice
+    };
+  });
+  const tierSizes = summarySelections
+    .map((selection) => selection.size)
+    .filter((size) => Number.isFinite(Number(size)));
+  const backupCakes = summarySelections
+    .filter((selection) => selection.kind === "backup" || selection.kind === "extra-backup")
+    .map((selection) => ({ ...selection }));
+  const decorNotes = summarySelections
+    .map((selection) => {
+      const parts = [];
+      if (selection.decor) parts.push(selection.decor);
+      if (selection.shellBorderEdge) parts.push(`shell border: ${selection.shellBorderEdge}`);
+      if (selection.swirlCount) parts.push(`swirls: ${selection.swirlCount}`);
+      if (selection.cherries) parts.push("cherries");
+      if (selection.outerFrosting) parts.push(`outer frosting: ${selection.outerFrosting}`);
+      if (selection.outerFrostingColor) parts.push(`outer color: ${selection.outerFrostingColor}`);
+      if (selection.edibleImage) {
+        parts.push("edible image");
+        if (selection.edibleImageFileName) parts.push(`image file: ${selection.edibleImageFileName}`);
+        if (selection.edibleImageNotes) parts.push(`image notes: ${selection.edibleImageNotes}`);
+      }
+      return parts.filter(Boolean).join(", ");
+    })
+    .filter(Boolean)
+    .join(" | ");
+  const orderNumber = `#WEB-${Date.now()}`;
+
+  return {
+    orderName: recommendation?.name || "Builder Order",
+    orderNumber,
+    customerName: submittedCustomerName,
+    customerEmail: submittedCustomerEmail,
+    customerPhone: submittedCustomerPhone,
+    eventDate: requiredDate || "",
+    eventDisplay: [promiseDate, promiseTime].filter(Boolean).join(" @ "),
+    pickupDelivery: [fulfillmentLabel, promiseTime].filter(Boolean).join(", "),
+    fulfillment: fulfillmentLabel,
+    dateOrdered: orderedDate,
+    takenBy: "Cakesupply",
+    status: "inquiry",
+    paymentStatus: "Unpaid",
+    addressLine: fulfillmentMethod === "delivery" ? fulfillmentLocation : "",
+    addressCity: fulfillmentMethod === "delivery" ? "City, State, Zip" : "",
+    quantity: "1",
+    cakeDetails: recommendation?.name || primarySelection.label || "",
+    flavor: summarySelections.map((selection) => selection.flavor).filter(Boolean).join(", "),
+    frosting: summarySelections.map((selection) => selection.frosting).filter(Boolean).join(", "),
+    filling: summarySelections.map((selection) => selection.filling).filter(Boolean).join(", "),
+    decor: summarySelections.map((selection) => selection.decor).filter(Boolean).join(", "),
+    notes: decorNotes,
+    guestCount: Number(guestCountInput?.value || 0),
+    servings: recommendation?.servings || summarySelections.reduce((total, selection) => total + getSelectionServings(selection), 0),
+    recommendation: recommendation ? { ...recommendation } : null,
+    tierSizes,
+    backupCakes,
+    ...prices,
+    price: prices.basePrice,
+    lineTotal: prices.totalPrice,
+    amountPaid: prices.depositPaid,
+    total: prices.totalPrice,
+    deliveryCharge: prices.deliveryFee,
+    selections: summarySelections,
+    orderItems,
+    source: "customer-customizer",
+    submittedAt: new Date().toISOString()
+  };
+}
+
+function buildCurrentBuilderOrderSummary() {
+  return buildOrderFromCustomizer();
+}
+
+async function submitOrderRequest(event) {
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+
+  const order = buildOrderFromCustomizer();
+  const submitButton = document.getElementById("submit-order-request-btn");
+  const message = document.getElementById("order-submit-message");
+  const submitPanel = document.querySelector(".order-submit-panel");
+
+  if (submitButton) submitButton.disabled = true;
+  if (message) {
+    message.textContent = "Submitting order request...";
+    message.className = "order-submit-message";
+  }
+
+  try {
+    const response = await fetch(ORDERS_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(order)
+    });
+
+    if (!response.ok) throw new Error("Unable to save order");
+
+    const result = await response.json();
+    renderOrderSubmissionSuccess(result, order, submitPanel);
+    launchOrderConfetti();
+  } catch (error) {
+    console.error("Unable to submit order request", error);
+    if (message) {
+      message.textContent = "Unable to submit. Please make sure the backend is running.";
+      message.className = "order-submit-message is-error";
+    }
+  } finally {
+    if (submitButton) submitButton.disabled = false;
+  }
+}
+
+function getSubmittedOrderNumber(result = {}, fallbackOrder = {}) {
+  return result.orderNumber || result.orderId || fallbackOrder.orderNumber || fallbackOrder.orderId || "";
+}
+
+function formatSubmittedOrderNumber(orderNumber) {
+  const label = String(orderNumber || "").trim();
+  if (!label) return "#pending";
+  return label.startsWith("#") ? label : `#${label}`;
+}
+
+function renderOrderSubmissionSuccess(result, fallbackOrder, submitPanel) {
+  if (!submitPanel) return;
+
+  const orderNumber = formatSubmittedOrderNumber(getSubmittedOrderNumber(result, fallbackOrder));
+  submitPanel.classList.add("is-submitted");
+  submitPanel.innerHTML = `
+    <div class="order-success-state" role="status" aria-live="polite">
+      <p class="order-success-title">Order Request Submitted</p>
+      <p class="order-success-number">Order ${escapeSummaryHTML(orderNumber)}</p>
+      <p class="order-success-note">We'll review your request and contact you shortly.</p>
+      <button class="order-home-btn" id="order-back-home-btn" type="button">Back to Home</button>
+    </div>
+  `;
+
+  submitPanel.querySelector("#order-back-home-btn")?.addEventListener("click", () => {
+    returnToLandingPage();
+  });
+}
+
+function launchOrderConfetti() {
+  const existingConfetti = document.querySelector(".order-confetti");
+  existingConfetti?.remove();
+
+  const confetti = document.createElement("div");
+  confetti.className = "order-confetti";
+  confetti.setAttribute("aria-hidden", "true");
+
+  const colors = ["#f6b7c1", "#f7d56f", "#7fb7e8", "#8bd3a7", "#f2a65a"];
+  for (let index = 0; index < 34; index += 1) {
+    const piece = document.createElement("span");
+    piece.className = "order-confetti-piece";
+    piece.style.setProperty("--x", `${8 + Math.random() * 84}vw`);
+    piece.style.setProperty("--drift", `${(Math.random() - 0.5) * 170}px`);
+    piece.style.setProperty("--delay", `${Math.random() * 0.28}s`);
+    piece.style.setProperty("--duration", `${0.9 + Math.random() * 0.55}s`);
+    piece.style.setProperty("--spin", `${180 + Math.random() * 540}deg`);
+    piece.style.background = colors[index % colors.length];
+    confetti.appendChild(piece);
+  }
+
+  document.body.appendChild(confetti);
+  window.setTimeout(() => {
+    confetti.remove();
+  }, 1800);
+}
+
+function persistCurrentBuilderOrderSummary() {
+  try {
+    localStorage.setItem(BUILDER_ORDER_SUMMARY_KEY, JSON.stringify(buildCurrentBuilderOrderSummary()));
+  } catch (error) {
+    console.warn("Unable to save builder order summary", error);
+  }
+}
+
+window.CakeSupplyBuilder = {
+  buildOrderFromCustomizer,
+  getCurrentOrderSummary: buildCurrentBuilderOrderSummary,
+  persistCurrentOrderSummary: persistCurrentBuilderOrderSummary,
+  submitOrderRequest
+};
+
 function getSelectionsBaseTotal(selectionList) {
   return selectionList.reduce((total, selection) => total + getSelectionBasePrice(selection), 0);
 }
@@ -4740,7 +6002,261 @@ function getSelectionDisplayName(selection) {
   return selection.label;
 }
 
+function escapeSummaryHTML(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function getDecorSummaryText(selection) {
+  const details = [];
+  if (selection.decor) {
+    details.push(selection.decor.charAt(0).toUpperCase() + selection.decor.slice(1));
+  }
+  if (selection.decor === SHELL_BORDER_DECOR && selection.shellBorderEdge) {
+    details.push(`Shell border: ${selection.shellBorderEdge}`);
+  }
+  if (selection.decor === SWIRL_DECOR && selection.swirlCount) {
+    details.push(`Swirls: ${normalizeSwirlCount(selection.swirlCount)}`);
+  }
+  if (selection.decor === SWIRL_DECOR && selection.cherries) {
+    details.push("Cherries");
+  }
+  if (selection.outerFrosting) {
+    details.push(`Outer frosting: ${selection.outerFrosting}`);
+  }
+  if (selection.outerFrosting && selection.outerFrostingColor) {
+    details.push(`Color: ${selection.outerFrostingColor}`);
+  }
+  if (selection.edibleImage) {
+    details.push("Edible image");
+    if (selection.edibleImageFileName) {
+      details.push(`File: ${selection.edibleImageFileName}`);
+    }
+    if (selection.edibleImageNotes) {
+      details.push(`Notes: ${selection.edibleImageNotes}`);
+    }
+  }
+  return details.join(", ");
+}
+
+function renderFulfillmentPanel() {
+  const panel = document.getElementById("fulfillment-panel-content");
+  if (!panel) return;
+
+  if (fulfillmentMethod !== "delivery") {
+    fulfillmentMethod = "pickup";
+  }
+
+  const isScheduleStep = fulfillmentPanelStep === "schedule";
+  const isContactStep = fulfillmentPanelStep === "contact";
+
+  panel.innerHTML = `
+    <div class="fulfillment-panel-shell${isScheduleStep ? " is-schedule-step" : isContactStep ? " is-contact-step" : " is-method-step"}">
+      <p class="fulfillment-panel-kicker">Order details</p>
+
+      ${!isContactStep ? `
+      <div class="fulfillment-options inline-fulfillment-options" role="radiogroup" aria-label="Pickup or delivery">
+        <label class="fulfillment-option${fulfillmentMethod === "delivery" ? " is-selected" : ""}">
+          <input type="radio" name="panel-fulfillment-method" value="delivery" ${fulfillmentMethod === "delivery" ? "checked" : ""}>
+          <span class="fulfillment-radio" aria-hidden="true"></span>
+          <span class="fulfillment-option-label">Delivery</span>
+        </label>
+        <label class="fulfillment-option${fulfillmentMethod === "pickup" ? " is-selected" : ""}">
+          <input type="radio" name="panel-fulfillment-method" value="pickup" ${fulfillmentMethod === "pickup" ? "checked" : ""}>
+          <span class="fulfillment-radio" aria-hidden="true"></span>
+          <span class="fulfillment-option-label">Pickup</span>
+        </label>
+      </div>
+      ` : ""}
+
+      ${!isContactStep ? `
+      <div class="fulfillment-date-field inline-delivery-location${fulfillmentMethod === "delivery" ? " is-visible" : ""}">
+        <label class="fulfillment-date-label" for="panel-fulfillment-location">Delivery location</label>
+        <input type="text" id="panel-fulfillment-location" class="fulfillment-date-input" value="${escapeSummaryHTML(fulfillmentLocation)}" placeholder="Enter address or location">
+      </div>
+      ` : ""}
+
+      ${isScheduleStep ? `
+      <div class="fulfillment-panel-grid">
+        <label class="fulfillment-date-field is-visible">
+          <span class="fulfillment-date-label">Date required</span>
+          <input type="date" id="panel-required-date" class="fulfillment-date-input" value="${requiredDate}" min="${new Date().toISOString().split("T")[0]}">
+        </label>
+        <label class="fulfillment-date-field is-visible">
+          <span class="fulfillment-date-label">Time required</span>
+          <input type="time" id="panel-required-time" class="fulfillment-date-input" value="${requiredTime}">
+        </label>
+      </div>
+      ` : ""}
+
+      ${isContactStep ? `
+      <div class="fulfillment-contact-grid">
+        <label class="fulfillment-contact-field">
+          <span class="fulfillment-date-label">Name</span>
+          <input type="text" id="panel-customer-name" class="fulfillment-date-input" value="${escapeSummaryHTML(customerName)}" placeholder="Your name" autocomplete="name" required>
+        </label>
+        <label class="fulfillment-contact-field">
+          <span class="fulfillment-date-label">Email</span>
+          <input type="email" id="panel-customer-email" class="fulfillment-date-input" value="${escapeSummaryHTML(customerEmail)}" placeholder="you@example.com" autocomplete="email" required>
+        </label>
+        <label class="fulfillment-contact-field">
+          <span class="fulfillment-date-label">Phone</span>
+          <input type="tel" id="panel-customer-phone" class="fulfillment-date-input" value="${escapeSummaryHTML(customerPhone)}" placeholder="(555) 555-5555" autocomplete="tel" required>
+        </label>
+      </div>
+      ` : ""}
+
+      <div class="fulfillment-actions inline-fulfillment-actions">
+        <button type="button" class="fulfillment-primary-btn" id="${isContactStep ? "fulfillment-review-order" : isScheduleStep ? "fulfillment-contact-step" : "fulfillment-next-step"}">${isContactStep ? "Review Order" : isScheduleStep ? "Contact Info" : "Date / Time Required"}</button>
+      </div>
+    </div>
+  `;
+
+  const optionButtons = panel.querySelectorAll(".fulfillment-option");
+  const optionInputs = panel.querySelectorAll('input[name="panel-fulfillment-method"]');
+  const locationField = panel.querySelector(".inline-delivery-location");
+  const locationInput = panel.querySelector("#panel-fulfillment-location");
+  const dateInput = panel.querySelector("#panel-required-date");
+  const timeInput = panel.querySelector("#panel-required-time");
+  const customerNameInput = panel.querySelector("#panel-customer-name");
+  const customerEmailInput = panel.querySelector("#panel-customer-email");
+  const customerPhoneInput = panel.querySelector("#panel-customer-phone");
+
+  const syncSelection = () => {
+    optionButtons.forEach((button) => {
+      const input = button.querySelector('input[name="panel-fulfillment-method"]');
+      const isSelected = input?.value === fulfillmentMethod;
+      button.classList.toggle("is-selected", Boolean(isSelected));
+      if (input) input.checked = Boolean(isSelected);
+    });
+    locationField?.classList.toggle("is-visible", fulfillmentMethod === "delivery");
+  };
+
+  optionInputs.forEach((input) => {
+    input.addEventListener("change", () => {
+      fulfillmentMethod = input.value === "delivery" ? "delivery" : "pickup";
+      syncSelection();
+      persistCustomizerState("fulfillment");
+    });
+  });
+
+  locationInput?.addEventListener("input", () => {
+    fulfillmentLocation = locationInput.value || "";
+    persistCustomizerState("fulfillment");
+  });
+
+  dateInput?.addEventListener("change", () => {
+    requiredDate = dateInput.value || "";
+    persistCustomizerState("fulfillment");
+  });
+
+  timeInput?.addEventListener("change", () => {
+    requiredTime = timeInput.value || "";
+    persistCustomizerState("fulfillment");
+  });
+
+  customerNameInput?.addEventListener("input", () => {
+    customerName = customerNameInput.value || "";
+    persistCustomizerState("fulfillment");
+  });
+
+  customerEmailInput?.addEventListener("input", () => {
+    customerEmail = customerEmailInput.value || "";
+    persistCustomizerState("fulfillment");
+  });
+
+  customerPhoneInput?.addEventListener("input", () => {
+    customerPhone = customerPhoneInput.value || "";
+    persistCustomizerState("fulfillment");
+  });
+
+  panel.querySelector("#fulfillment-next-step")?.addEventListener("click", () => {
+    if (fulfillmentMethod === "delivery" && !locationInput?.value.trim()) {
+      locationInput?.focus();
+      return;
+    }
+
+    fulfillmentLocation = locationInput?.value || "";
+    fulfillmentPanelStep = "schedule";
+    persistCustomizerState("fulfillment");
+    renderFulfillmentPanel();
+  });
+
+  panel.querySelector("#fulfillment-contact-step")?.addEventListener("click", () => {
+    if (fulfillmentMethod === "delivery" && !locationInput?.value.trim()) {
+      locationInput?.focus();
+      return;
+    }
+    if (!dateInput?.value) {
+      dateInput?.focus();
+      dateInput?.showPicker?.();
+      return;
+    }
+    if (!timeInput?.value) {
+      timeInput?.focus();
+      timeInput?.showPicker?.();
+      return;
+    }
+
+    fulfillmentLocation = locationInput?.value || "";
+    requiredDate = dateInput.value || "";
+    requiredTime = timeInput.value || "";
+    persistCustomizerState("fulfillment");
+    fulfillmentPanelStep = "contact";
+    renderFulfillmentPanel();
+  });
+
+  panel.querySelector("#fulfillment-review-order")?.addEventListener("click", () => {
+    if (!customerNameInput?.value.trim()) {
+      customerNameInput?.focus();
+      return;
+    }
+    if (!customerEmailInput?.value.trim() || !customerEmailInput.checkValidity()) {
+      customerEmailInput?.focus();
+      return;
+    }
+    if (!customerPhoneInput?.value.trim()) {
+      customerPhoneInput?.focus();
+      return;
+    }
+
+    customerName = customerNameInput.value || "";
+    customerEmail = customerEmailInput.value || "";
+    customerPhone = customerPhoneInput.value || "";
+    persistCustomizerState("fulfillment");
+    renderOrderSummaryPage();
+  });
+}
+
+async function initCustomerSummaryPreview() {
+  const preview = document.getElementById("cake-builder-3d");
+  if (!preview) return;
+
+  customizerTierSelect = (index) => selectFinishedOrderPart(index);
+  activeCustomizerTierIndex = null;
+  visibleBackupTierIndex = null;
+  customizerPreviewSelections = selections;
+
+  await initCakeBuilder3D(recommendation, getCurrentBuilderParts(), { showCameraGizmo: false });
+
+  for (let index = 0; index < selections.length; index += 1) {
+    if (selections[index]?.kind === "extra-backup") {
+      await addExtraBackupCakeObject(selections[index], index);
+    }
+  }
+
+  await Promise.all(selections.map((_, index) => syncOuterFrostingForIndex(index)));
+  await Promise.all(selections.map((_, index) => syncCupcakeFrostingForIndex(index)));
+  await Promise.all(selections.map((_, index) => syncDecorForIndex(index)));
+  showFinishedOrderModel();
+}
+
 function renderOrderSummaryPage() {
+  currentCustomizerView = "summary";
   persistCustomizerState("summary");
 
   if (customizerKeyHandler) {
@@ -4749,6 +6265,8 @@ function renderOrderSummaryPage() {
   }
 
   const summarySelections = selections.map((selection) => ({ ...selection }));
+  const existingPreview = document.getElementById("cake-builder-3d");
+  persistCurrentBuilderOrderSummary();
   const now = new Date();
   const requiredDateValue = requiredDate ? new Date(`${requiredDate}T12:00:00`) : now;
   const promiseDate = new Intl.DateTimeFormat("en-US", {
@@ -4766,127 +6284,87 @@ function renderOrderSummaryPage() {
         hour: "numeric",
         minute: "2-digit"
       }).format(now);
-  const orderedDate = new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric"
-  }).format(now);
-  const printedStamp = new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "2-digit",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(now);
-  const subtotal = getSelectionsBaseTotal(summarySelections) + calculateCustomizationPrice(summarySelections);
+  const structuredPrices = getStructuredPriceFields(summarySelections);
+  const subtotal = structuredPrices.totalPrice;
   const taxRate = 0.0725;
   const tax = subtotal * taxRate;
   const total = subtotal + tax;
   const fulfillmentLabel = fulfillmentMethod === "delivery" ? "Delivery" : "Pickup";
-  const fulfillmentWindowLabel = fulfillmentMethod === "delivery" ? "Delivery window" : "Pickup window";
-  const fulfillmentLocationText = fulfillmentMethod === "delivery" && fulfillmentLocation
-    ? fulfillmentLocation
-    : "Road St.";
+  const fulfillmentLocationText = fulfillmentMethod === "delivery" && fulfillmentLocation ? fulfillmentLocation : "";
+  const customerContactLines = [
+    customerName.trim(),
+    customerEmail.trim(),
+    customerPhone.trim()
+  ].filter(Boolean);
+  const requestDetails = [
+    `${fulfillmentLabel}${promiseTime ? ` at ${promiseTime}` : ""}`,
+    promiseDate
+  ].filter(Boolean).join(" - ");
 
   customizer.innerHTML = `
-    <div class="summary-page">
-      <div class="summary-header-row">
-        <div class="summary-actions">
-          <button type="button" class="summary-action-btn">Add Notes</button>
-          <button class="back-btn summary-back-trigger" type="button">&larr; Back</button>
-        </div>
+    <div class="summary-page customer-review-page">
+      <div class="customer-review-topbar">
+        <button class="back-btn summary-back-trigger" type="button">&larr; Back</button>
       </div>
 
-      <div class="summary-panel">
-        <div class="summary-sheet-header">
-          <div class="summary-sheet-brand">
-            <div class="summary-sheet-brandline">
-              <div class="summary-brand-name">CAKE SUPPLY</div>
-            </div>
-            <div class="summary-customer-block">
-              <div class="summary-customer-name">Customer Name</div>
-              <div class="summary-customer-phone">(000-000-0000)</div>
-              <div class="summary-customer-order">Order #000X</div>
-              <div class="summary-customer-window">${fulfillmentWindowLabel}: XX:XX</div>
-            </div>
-          </div>
-
-          <div class="summary-sheet-meta">
-            <div class="summary-sheet-promise">${promiseDate} @ ${promiseTime}</div>
-            <div class="summary-sheet-status">${fulfillmentLabel}</div>
-            <div class="summary-sheet-submeta">Date Ordered: ${orderedDate}</div>
-            <div class="summary-sheet-submeta">Taken By: Cakesupply</div>
-            <div class="summary-sheet-submeta">Status: Open, Unpaid</div>
-          </div>
+      <div class="customer-review-layout">
+        <div class="customer-review-preview" aria-label="3D cake preview">
+          <div id="cake-builder-3d"></div>
         </div>
 
-        <div class="summary-sheet-contact-row">
-          <div class="summary-sheet-contact-left"></div>
-          <div class="summary-sheet-contact-right">
-            <div>Customer name</div>
-            <div>${fulfillmentLocationText}</div>
-            <div>City, State, Zip</div>
-            <div>(000-000-0000)</div>
+        <div class="customer-review-info">
+          <p class="customer-review-kicker">Order request</p>
+          <h2>${escapeSummaryHTML(recommendation?.name || "Custom cake")}</h2>
+          <p class="customer-review-request">${escapeSummaryHTML(requestDetails)}</p>
+          ${fulfillmentLocationText ? `<p class="customer-review-location">${escapeSummaryHTML(fulfillmentLocationText)}</p>` : ""}
+          ${customerContactLines.length ? `<p class="customer-review-contact">${escapeSummaryHTML(customerContactLines.join(" | "))}</p>` : ""}
+
+          <div class="customer-review-meta">
+            <div><span>Servings</span><strong>${escapeSummaryHTML(recommendation?.servings || summarySelections.reduce((totalServings, selection) => totalServings + getSelectionServings(selection), 0))}</strong></div>
+            <div><span>Status</span><strong>Inquiry</strong></div>
+            <div><span>Payment</span><strong>Unpaid</strong></div>
           </div>
-        </div>
 
-        <div class="summary-order-block">
-          <div class="summary-table-head">
-            <span>Quantity</span>
-            <span>Description</span>
-            <span>Price</span>
-            <span>Total</span>
-          </div>
-          <div class="summary-items">
-            ${summarySelections.map((selection) => {
-              const basePrice = getSelectionBasePrice(selection);
-              const extras = getSelectionExtras(selection);
-              const rowTotal = basePrice + extras.flavor + extras.frosting + extras.filling + extras.decor;
+          <div class="customer-review-section">
+            <h3>Cake details</h3>
+            <div class="customer-review-items">
+              ${summarySelections.map((selection) => {
+                const basePrice = getSelectionBasePrice(selection);
+                const extras = getSelectionExtras(selection);
+                const rowTotal = basePrice + extras.flavor + extras.frosting + extras.filling + extras.decor;
+                const decorText = getDecorSummaryText(selection);
 
-              const detailRows = [];
-              if (selection.signature) detailRows.push(`<div class="summary-detail-row summary-signature-row"><span>Signature Flavor: ${getSelectionDisplayName(selection)}</span><span></span></div>`);
-              if (selection.flavor) detailRows.push(`<div class="summary-detail-row"><span>Flavor: ${selection.flavor}${extras.flavor > 0 ? ` (${formatMoney(extras.flavor)})` : ""}</span><span>${extras.flavor > 0 ? formatMoney(extras.flavor) : ""}</span></div>`);
-              if (selection.filling) detailRows.push(`<div class="summary-detail-row"><span>Filling: ${selection.filling}${extras.filling > 0 ? ` (${formatMoney(extras.filling)})` : ""}</span><span>${extras.filling > 0 ? formatMoney(extras.filling) : ""}</span></div>`);
-              if (selection.frosting) detailRows.push(`<div class="summary-detail-row"><span>Icing: ${selection.frosting}</span><span>${extras.frosting > 0 ? formatMoney(extras.frosting) : ""}</span></div>`);
-              if (selection.outerFrosting) detailRows.push(`<div class="summary-detail-row"><span>Outer frosting layer</span><span></span></div>`);
-              if (selection.decor) detailRows.push(`<div class="summary-detail-row"><span>Decoration: ${selection.decor.charAt(0).toUpperCase() + selection.decor.slice(1)}</span><span></span></div>`);
-              if (selection.decor === SWIRL_DECOR && selection.cherries) detailRows.push(`<div class="summary-detail-row"><span>Cherries: ${normalizeSwirlCount(selection.swirlCount)}</span><span></span></div>`);
-
-              return `
-                <div class="summary-item-card">
-                  <div class="summary-item-head">
-                    <div class="summary-item-qty">1 Each</div>
-                    <div class="summary-item-description">
-                      <div class="summary-item-name">${selection.label}</div>
-                      <div class="summary-item-details">
-                        ${detailRows.join("")}
-                      </div>
+                return `
+                  <div class="customer-review-item">
+                    <div class="customer-review-item-head">
+                      <span>${escapeSummaryHTML(selection.label || "Cake")}</span>
+                      <strong>$${formatMoney(rowTotal)}</strong>
                     </div>
-                    <div class="summary-item-price">${formatMoney(basePrice)}</div>
-                    <div class="summary-item-total">${formatMoney(rowTotal)}</div>
+                    ${selection.signature ? `<p>Signature: ${escapeSummaryHTML(getSelectionDisplayName(selection))}</p>` : ""}
+                    ${selection.flavor ? `<p>Flavor: ${escapeSummaryHTML(selection.flavor)}</p>` : ""}
+                    ${selection.frosting ? `<p>Frosting: ${escapeSummaryHTML(selection.frosting)}</p>` : ""}
+                    ${selection.filling ? `<p>Filling: ${escapeSummaryHTML(selection.filling)}</p>` : ""}
+                    ${decorText ? `<p>Decor: ${escapeSummaryHTML(decorText)}</p>` : ""}
+                    <p>Base: $${formatMoney(basePrice)}</p>
                   </div>
-                </div>
-              `;
-            }).join("")}
+                `;
+              }).join("")}
+            </div>
           </div>
-        </div>
 
-        <div class="summary-totals">
-          <div class="summary-policy">* 4 Days Advance Notice Is Required For Any Changes Or Cancellations To An Existing Order.</div>
-          <div class="summary-total-row"><span>Discount</span><span>0.00</span></div>
-          <div class="summary-total-row"><span>Subtotal</span><span>${formatMoney(subtotal)}</span></div>
-          <div class="summary-total-row"><span>Tax</span><span>${formatMoney(tax)}</span></div>
-          <div class="summary-total-row"><span>Delivery Charge</span><span>0.00</span></div>
-          <div class="summary-total-row summary-total-strong"><span>Total</span><span>${formatMoney(total)}</span></div>
-          <div class="summary-total-row summary-total-strong"><span>Amount paid:</span><span>0.00</span></div>
-          <div class="summary-total-row summary-total-strong"><span>Balance due:</span><span>${formatMoney(total)}</span></div>
-        </div>
+          <div class="customer-review-section customer-review-pricing">
+            <h3>Price</h3>
+            <div><span>Subtotal</span><strong>$${formatMoney(subtotal)}</strong></div>
+            <div><span>Tax</span><strong>$${formatMoney(tax)}</strong></div>
+            <div><span>Estimated total</span><strong>$${formatMoney(total)}</strong></div>
+            <div><span>Deposit paid</span><strong>$0.00</strong></div>
+            <div><span>Balance due</span><strong>$${formatMoney(total)}</strong></div>
+          </div>
 
-        <div class="summary-sheet-footer">
-          <span>Cake Customer</span>
-          <span>Date Required: ${promiseDate} @ ${promiseTime}</span>
-          <span>Printed ${printedStamp}</span>
+          <div class="order-submit-panel">
+            <button class="order-submit-btn" id="submit-order-request-btn" type="button">Submit Order Request</button>
+            <div class="order-submit-message" id="order-submit-message" role="status" aria-live="polite"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -4904,237 +6382,22 @@ function renderOrderSummaryPage() {
       });
     });
   });
-}
 
-function renderRequiredDateOverlay() {
-  const existingOverlay = document.getElementById("required-date-overlay");
-  if (existingOverlay) {
-    existingOverlay.remove();
-  }
-
-  const overlay = document.createElement("div");
-  overlay.id = "required-date-overlay";
-  overlay.className = "fulfillment-overlay";
-  overlay.innerHTML = `
-    <div class="fulfillment-dialog required-date-dialog" role="dialog" aria-modal="true" aria-labelledby="required-date-title">
-      <div class="fulfillment-dialog-inner">
-        <p id="required-date-title" class="fulfillment-title">Date required</p>
-        <div class="required-date-field">
-          <label class="fulfillment-date-label" for="required-date-input">Select date</label>
-          <input
-            type="date"
-            id="required-date-input"
-            class="fulfillment-date-input"
-            value="${requiredDate}"
-            min="${new Date().toISOString().split("T")[0]}">
-        </div>
-        <div class="fulfillment-actions">
-          <button type="button" class="fulfillment-secondary-btn">Cancel</button>
-          <button type="button" class="fulfillment-primary-btn">Continue</button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  customizer.appendChild(overlay);
-
-  const dateInput = overlay.querySelector("#required-date-input");
-  const cancelButton = overlay.querySelector(".fulfillment-secondary-btn");
-  const continueButton = overlay.querySelector(".fulfillment-primary-btn");
-
-  dateInput?.addEventListener("change", () => {
-    requiredDate = dateInput.value || "";
-    persistCustomizerState();
-  });
-
-  cancelButton?.addEventListener("click", () => {
-    overlay.remove();
-  });
-
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) {
-      overlay.remove();
-    }
-  });
-
-  continueButton?.addEventListener("click", () => {
-    if (!dateInput?.value) {
-      dateInput?.focus();
-      dateInput?.showPicker?.();
-      return;
-    }
-
-    requiredDate = dateInput.value || "";
-    persistCustomizerState();
-    overlay.remove();
-    renderRequiredTimeOverlay();
-  });
-}
-
-function renderRequiredTimeOverlay() {
-  const existingOverlay = document.getElementById("required-time-overlay");
-  if (existingOverlay) {
-    existingOverlay.remove();
-  }
-
-  const overlay = document.createElement("div");
-  overlay.id = "required-time-overlay";
-  overlay.className = "fulfillment-overlay";
-  overlay.innerHTML = `
-    <div class="fulfillment-dialog required-time-dialog" role="dialog" aria-modal="true" aria-labelledby="required-time-title">
-      <div class="fulfillment-dialog-inner">
-        <p id="required-time-title" class="fulfillment-title">Time required</p>
-        <div class="required-date-field">
-          <label class="fulfillment-date-label" for="required-time-input">Select time</label>
-          <input
-            type="time"
-            id="required-time-input"
-            class="fulfillment-date-input"
-            value="${requiredTime}">
-        </div>
-        <div class="fulfillment-actions">
-          <button type="button" class="fulfillment-secondary-btn">Cancel</button>
-          <button type="button" class="fulfillment-primary-btn">Continue</button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  customizer.appendChild(overlay);
-
-  const timeInput = overlay.querySelector("#required-time-input");
-  const cancelButton = overlay.querySelector(".fulfillment-secondary-btn");
-  const continueButton = overlay.querySelector(".fulfillment-primary-btn");
-
-  timeInput?.addEventListener("change", () => {
-    requiredTime = timeInput.value || "";
-    persistCustomizerState();
-  });
-
-  cancelButton?.addEventListener("click", () => {
-    overlay.remove();
-  });
-
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) {
-      overlay.remove();
-    }
-  });
-
-  continueButton?.addEventListener("click", () => {
-    if (!timeInput?.value) {
-      timeInput?.focus();
-      timeInput?.showPicker?.();
-      return;
-    }
-
-    requiredTime = timeInput.value || "";
-    persistCustomizerState();
-    overlay.remove();
-    renderOrderSummaryPage();
-  });
-}
-
-function renderFulfillmentOverlay() {
-  const existingOverlay = document.getElementById("fulfillment-overlay");
-  if (existingOverlay) {
-    existingOverlay.remove();
-  }
-
-  if (fulfillmentMethod !== "delivery") {
-    fulfillmentMethod = "pickup";
-  }
-
-  const overlay = document.createElement("div");
-  overlay.id = "fulfillment-overlay";
-  overlay.className = "fulfillment-overlay";
-  overlay.innerHTML = `
-    <div class="fulfillment-dialog" role="dialog" aria-modal="true" aria-labelledby="fulfillment-title">
-      <div class="fulfillment-dialog-inner">
-        <div class="fulfillment-body">
-          <div class="fulfillment-options" role="radiogroup" aria-label="Pickup or delivery">
-            <label class="fulfillment-option${fulfillmentMethod === "pickup" ? " is-selected" : ""}">
-              <input type="radio" name="fulfillment-method" value="pickup" ${fulfillmentMethod === "pickup" ? "checked" : ""}>
-              <span class="fulfillment-radio"></span>
-              <span class="fulfillment-option-label">Pickup</span>
-            </label>
-          <label class="fulfillment-option${fulfillmentMethod === "delivery" ? " is-selected" : ""}">
-            <input type="radio" name="fulfillment-method" value="delivery" ${fulfillmentMethod === "delivery" ? "checked" : ""}>
-            <span class="fulfillment-radio"></span>
-            <span class="fulfillment-option-label">Delivery</span>
-          </label>
-        </div>
-        <div class="fulfillment-date-field${fulfillmentMethod === "delivery" ? " is-visible" : ""}">
-            <label class="fulfillment-date-label" for="fulfillment-location">Delivery location</label>
-            <input type="text" id="fulfillment-location" class="fulfillment-date-input" value="${fulfillmentLocation}" placeholder="Enter address or location">
-          </div>
-        </div>
-        <div class="fulfillment-actions">
-          <button type="button" class="fulfillment-secondary-btn">Cancel</button>
-          <button type="button" class="fulfillment-primary-btn">Continue</button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  customizer.appendChild(overlay);
-
-  const optionButtons = overlay.querySelectorAll(".fulfillment-option");
-  const optionInputs = overlay.querySelectorAll('input[name="fulfillment-method"]');
-  const dateField = overlay.querySelector(".fulfillment-date-field");
-  const locationInput = overlay.querySelector(".fulfillment-date-input");
-  const cancelButton = overlay.querySelector(".fulfillment-secondary-btn");
-  const continueButton = overlay.querySelector(".fulfillment-primary-btn");
-
-  const syncSelection = () => {
-    optionButtons.forEach((button) => {
-      const input = button.querySelector('input[name="fulfillment-method"]');
-      const isSelected = input?.value === fulfillmentMethod;
-      button.classList.toggle("is-selected", Boolean(isSelected));
-      if (input) {
-        input.checked = Boolean(isSelected);
-      }
+  customizer.querySelector("#submit-order-request-btn")?.addEventListener("click", submitOrderRequest);
+  const nextPreview = customizer.querySelector(".customer-review-preview #cake-builder-3d");
+  if (existingPreview && nextPreview && renderer && camera && scene) {
+    existingPreview.querySelector(".camera-view-gizmo")?.remove();
+    cameraViewGizmo = null;
+    cameraViewButtons = [];
+    nextPreview.replaceWith(existingPreview);
+    requestAnimationFrame(() => {
+      resizeCustomizerRenderer();
+      showFinishedOrderModel({ snap: true });
+      syncFinishedOrderHitTargets();
     });
-
-    if (dateField) {
-      dateField.classList.toggle("is-visible", fulfillmentMethod === "delivery");
-    }
-  };
-
-  optionInputs.forEach((input) => {
-    input.addEventListener("change", () => {
-      fulfillmentMethod = input.value === "delivery" ? "delivery" : "pickup";
-      syncSelection();
-      persistCustomizerState();
-    });
-  });
-
-  locationInput?.addEventListener("input", () => {
-    fulfillmentLocation = locationInput.value || "";
-    persistCustomizerState();
-  });
-
-  cancelButton?.addEventListener("click", () => {
-    overlay.remove();
-  });
-
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) {
-      overlay.remove();
-    }
-  });
-
-  continueButton?.addEventListener("click", () => {
-    if (fulfillmentMethod === "delivery" && !locationInput?.value.trim()) {
-      locationInput?.focus();
-      return;
-    }
-
-    fulfillmentLocation = locationInput?.value || "";
-    persistCustomizerState();
-    overlay.remove();
-    renderRequiredDateOverlay();
-  });
+  } else {
+    void initCustomerSummaryPreview();
+  }
 }
 
 function getTierRow(index) {
@@ -5200,45 +6463,71 @@ function toggleTierPeeking(index) {
   setTierPeeking(index, !entry.peeking);
 }
 
-function scrollTierRowIntoView(index) {
+function scrollTierRowIntoView(index, block = "center") {
   if (index === null) return;
 
   const row = getTierRow(index);
   if (!row) return;
+  const scroller = orderSections;
+  if (!scroller) return;
 
-  row.scrollIntoView({
-    behavior: "smooth",
-    block: "nearest",
-    inline: "nearest"
+  const scrollerRect = scroller.getBoundingClientRect();
+  const rowRect = row.getBoundingClientRect();
+  const rowTop = rowRect.top - scrollerRect.top + scroller.scrollTop;
+  const centeredTop = rowTop - (scroller.clientHeight - row.offsetHeight) / 2;
+  const nearestTop = rowRect.top < scrollerRect.top
+    ? rowTop
+    : rowTop - scroller.clientHeight + row.offsetHeight;
+  const nextTop = block === "nearest" && rowRect.top >= scrollerRect.top && rowRect.bottom <= scrollerRect.bottom
+    ? scroller.scrollTop
+    : block === "nearest"
+      ? nearestTop
+      : centeredTop;
+
+  scroller.scrollTo({
+    top: Math.max(0, nextTop),
+    behavior: "smooth"
   });
-}
-
-function closeDrawerMenus() {
-  setAccordionSection("flavor");
-}
-
-function setFlavorCardExpanded(isExpanded) {
-  setAccordionSection(isExpanded ? "flavor" : null);
 }
 
 function setAccordionSection(sectionName = "flavor") {
   const flavorPanel = document.getElementById("flavor-panel");
-  if (!flavorPanel) return;
+  const decorPanel = document.getElementById("decor-panel");
+  if (!flavorPanel && !decorPanel) return;
 
   const activeSection = sectionName || null;
 
-  flavorPanel.querySelectorAll(".accordion-section").forEach((section) => {
-    const isExpanded = section.dataset.accordionSection === activeSection;
-    section.classList.toggle("expanded", isExpanded);
-    section.querySelector(".accordion-header")?.setAttribute("aria-expanded", isExpanded ? "true" : "false");
-  });
+  [flavorPanel, decorPanel].filter(Boolean).forEach((panel) => {
+    panel.querySelectorAll(".accordion-section").forEach((section) => {
+      const isExpanded = section.dataset.accordionSection === activeSection;
+      section.classList.toggle("expanded", isExpanded);
+      section.querySelector(".accordion-header")?.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+    });
 
-  flavorPanel.dataset.activeAccordion = activeSection || "";
+    panel.dataset.activeAccordion = activeSection || "";
+  });
 }
 
 function getDecorTargetIndex() {
   if (activeTierIndex !== null) return activeTierIndex;
   return selections.length ? 0 : null;
+}
+
+function syncEdibleImageControls(index) {
+  const selection = index !== null ? selections[index] : null;
+  const isEnabled = Boolean(selection?.size);
+
+  if (edibleImageRequestedInput) {
+    edibleImageRequestedInput.checked = selection?.edibleImage === true;
+    edibleImageRequestedInput.disabled = !isEnabled;
+  }
+  if (edibleImageFileInput) {
+    edibleImageFileInput.disabled = !isEnabled;
+  }
+  if (edibleImageNotesInput) {
+    edibleImageNotesInput.value = selection?.edibleImageNotes || "";
+    edibleImageNotesInput.disabled = !isEnabled;
+  }
 }
 
 function syncDecorButtons(index) {
@@ -5302,6 +6591,8 @@ function syncDecorButtons(index) {
     button.setAttribute("aria-pressed", isSelected ? "true" : "false");
     button.disabled = !selection?.size || !isSwirlsSelected;
   });
+
+  syncEdibleImageControls(index);
 }
 
 syncTierRowStates = function () {
@@ -5313,6 +6604,288 @@ syncTierRowStates = function () {
     getTierRow(activeTierIndex)?.classList.add("active-tier-row");
   }
 };
+
+function getFinishedOrderGroupKeyForPart(partIndex) {
+  const selection = partIndex !== null ? customizerPreviewSelections[partIndex] : null;
+  if (!selection || selection.kind === "main") return "main";
+  return `part-${partIndex}`;
+}
+
+function getFinishedOrderCarouselGroups() {
+  const groups = [];
+  const mainEntries = cakeObjects.filter((entry) => entry.kind === "main");
+
+  if (mainEntries.length) {
+    groups.push({
+      key: "main",
+      entries: mainEntries,
+      partIndex: mainEntries[0].partIndex
+    });
+  }
+
+  customizerPreviewSelections.forEach((selection, index) => {
+    if (!selection || selection.kind === "main") return;
+
+    const entries = cakeObjects.filter((entry) => entry.partIndex === index);
+    if (!entries.length) return;
+
+    groups.push({
+      key: `part-${index}`,
+      entries,
+      partIndex: index
+    });
+  });
+
+  return groups;
+}
+
+function getFinishedOrderSelectedGroupIndex(groups) {
+  const selectedKey = finishedOrderSelectedGroupKey || getFinishedOrderGroupKeyForPart(activeCustomizerTierIndex);
+  const selectedIndex = groups.findIndex((group) => group.key === selectedKey);
+  return selectedIndex === -1 ? 0 : selectedIndex;
+}
+
+function applyFinishedOrderCarouselLayout({ snap = false } = {}) {
+  const groups = getFinishedOrderCarouselGroups();
+  if (!groups.length) return;
+
+  const selectedGroupIndex = getFinishedOrderSelectedGroupIndex(groups);
+  const radiusX = groups.length > 2 ? 0.58 : 0.42;
+  const radiusZ = groups.length > 2 ? 0.34 : 0.28;
+
+  groups.forEach((group, groupIndex) => {
+    const wrappedOffset = ((groupIndex - selectedGroupIndex + groups.length / 2) % groups.length) - groups.length / 2;
+    const angle = groups.length === 1 ? 0 : (wrappedOffset / Math.max(groups.length, 3)) * Math.PI * 2;
+    const x = Math.sin(angle) * radiusX;
+    const z = Math.cos(angle) * radiusZ - 0.04;
+    const isSelected = groupIndex === selectedGroupIndex;
+
+    group.entries.forEach((entry) => {
+      entry.object.visible = true;
+      entry.targetX = x;
+      entry.targetZ = z;
+
+      if (snap) {
+        entry.currentX = x;
+        entry.currentZ = z;
+        entry.object.position.x = x;
+        entry.object.position.z = z;
+      }
+
+      if (entry.outerFrostingObject) {
+        entry.outerFrostingObject.visible = !entry.peeking;
+        positionOuterFrostingForEntry(entry);
+      }
+
+      entry.object.traverse((child) => {
+        if (!child.isMesh || !child.material || !("emissive" in child.material)) return;
+        child.material.emissive.setHex(isSelected ? 0xf3e1bb : 0x000000);
+        child.material.emissiveIntensity = isSelected ? 0.08 : 0;
+      });
+    });
+  });
+
+  syncFinishedOrderHitTargets();
+}
+
+function selectFinishedOrderPart(partIndex, { snap = false, scroll = true, persistView = true } = {}) {
+  const groups = getFinishedOrderCarouselGroups();
+  if (!groups.length) return;
+
+  const nextGroupKey = getFinishedOrderGroupKeyForPart(partIndex);
+  const nextGroup = groups.find((group) => group.key === nextGroupKey) || groups[0];
+  finishedOrderSelectedGroupKey = nextGroup.key;
+  activeTierIndex = partIndex ?? nextGroup.partIndex ?? null;
+  activeCustomizerTierIndex = activeTierIndex;
+  visibleBackupTierIndex = null;
+
+  setFocusObject(null);
+  applyFinishedOrderCarouselLayout({ snap });
+  syncTierRowStates();
+  syncPeekToggles();
+  if (scroll) scrollTierRowIntoView(activeTierIndex);
+  if (persistView) {
+    persistCustomizerState(document.querySelector(".customer-review-page") ? "summary" : "fulfillment");
+  }
+}
+
+function showFinishedOrderModel({ snap = false, selectedPartIndex = activeTierIndex } = {}) {
+  visibleBackupTierIndex = null;
+  setFocusObject(null);
+
+  const hasMainCake = cakeObjects.some((entry) => entry.kind === "main");
+  const fallbackPartIndex = hasMainCake
+    ? cakeObjects.find((entry) => entry.kind === "main")?.partIndex ?? activeTierIndex
+    : activeTierIndex ?? cakeObjects[0]?.partIndex ?? null;
+  const nextSelectedPartIndex = selectedPartIndex ?? fallbackPartIndex;
+
+  selectFinishedOrderPart(nextSelectedPartIndex, { snap, scroll: false, persistView: false });
+
+  frameFinishedOrderModel();
+  syncTierRowStates();
+}
+
+function ensureFinishedOrderHitTargetLayer() {
+  const container = document.getElementById("cake-builder-3d");
+  if (!container) return null;
+
+  if (!finishedOrderHitTargetLayer || finishedOrderHitTargetLayer.parentElement !== container) {
+    finishedOrderHitTargetLayer?.remove();
+    finishedOrderHitTargetLayer = document.createElement("div");
+    finishedOrderHitTargetLayer.className = "finished-order-hit-layer";
+    container.appendChild(finishedOrderHitTargetLayer);
+  }
+
+  return finishedOrderHitTargetLayer;
+}
+
+function syncFinishedOrderHitTargets() {
+  if (!camera || !renderer) return;
+
+  const isFinishedOrderView = document.getElementById("customizer-layout")?.classList.contains("is-fulfillment-step")
+    || document.querySelector(".customer-review-page");
+  if (!isFinishedOrderView) {
+    finishedOrderHitTargetLayer?.remove();
+    finishedOrderHitTargetLayer = null;
+    return;
+  }
+
+  const layer = ensureFinishedOrderHitTargetLayer();
+  const groups = getFinishedOrderCarouselGroups();
+  if (!layer || !groups.length) return;
+
+  const rect = renderer.domElement.getBoundingClientRect();
+  const layerRect = layer.getBoundingClientRect();
+  const liveKeys = new Set();
+
+  groups.forEach((group) => {
+    const box = new THREE.Box3();
+    group.entries.forEach((entry) => {
+      if (entry.object.visible) box.expandByObject(entry.object);
+      if (entry.outerFrostingObject?.visible) box.expandByObject(entry.outerFrostingObject);
+    });
+    if (box.isEmpty()) return;
+
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    box.getCenter(center);
+    box.getSize(size);
+    center.project(camera);
+
+    const x = rect.left - layerRect.left + ((center.x + 1) / 2) * rect.width;
+    const y = rect.top - layerRect.top + ((1 - center.y) / 2) * rect.height;
+    const hitSize = Math.max(96, Math.min(190, Math.max(size.x, size.y, size.z) * 230));
+    const key = group.key;
+    liveKeys.add(key);
+
+    let target = layer.querySelector(`[data-finished-order-target="${CSS.escape(key)}"]`);
+    if (!target) {
+      target = document.createElement("button");
+      target.type = "button";
+      target.className = "finished-order-hit-target";
+      target.dataset.finishedOrderTarget = key;
+      target.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        selectFinishedOrderPart(group.partIndex);
+      });
+      layer.appendChild(target);
+    }
+
+    target.setAttribute("aria-label", `Select ${customizerPreviewSelections[group.partIndex]?.label || "main cake"}`);
+    target.style.left = `${x}px`;
+    target.style.top = `${y}px`;
+    target.style.width = `${hitSize}px`;
+    target.style.height = `${hitSize}px`;
+  });
+
+  layer.querySelectorAll(".finished-order-hit-target").forEach((target) => {
+    if (!liveKeys.has(target.dataset.finishedOrderTarget)) {
+      target.remove();
+    }
+  });
+}
+
+function expandFinishedOrderTargetBox(box, entry) {
+  if (!entry?.object?.visible) return;
+
+  const entryBox = new THREE.Box3().setFromObject(entry.object);
+  if (entryBox.isEmpty()) return;
+
+  const targetOffset = new THREE.Vector3(
+    (entry.targetX ?? entry.object.position.x) - entry.object.position.x,
+    0,
+    (entry.targetZ ?? entry.object.position.z) - entry.object.position.z
+  );
+  entryBox.translate(targetOffset);
+  box.union(entryBox);
+
+  if (entry.outerFrostingObject?.visible) {
+    const outerBox = new THREE.Box3().setFromObject(entry.outerFrostingObject);
+    if (!outerBox.isEmpty()) {
+      outerBox.translate(targetOffset);
+      box.union(outerBox);
+    }
+  }
+}
+
+function frameFinishedOrderModel() {
+  if (!camera || !cakeObjects.length) return;
+
+  const groups = getFinishedOrderCarouselGroups();
+  const selectedGroup = groups[getFinishedOrderSelectedGroupIndex(groups)] || groups[0] || null;
+  const box = new THREE.Box3();
+  cakeObjects.forEach((entry) => expandFinishedOrderTargetBox(box, entry));
+
+  if (box.isEmpty()) return;
+
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  const selectedBox = new THREE.Box3();
+
+  box.getCenter(center);
+  box.getSize(size);
+  selectedGroup?.entries.forEach((entry) => expandFinishedOrderTargetBox(selectedBox, entry));
+
+  const selectedCenter = new THREE.Vector3();
+  const selectedSize = new THREE.Vector3();
+  if (!selectedBox.isEmpty()) {
+    selectedBox.getCenter(selectedCenter);
+    selectedBox.getSize(selectedSize);
+  } else {
+    selectedCenter.copy(center);
+    selectedSize.copy(size);
+  }
+
+  const maxSize = Math.max(size.x, size.y, size.z, 0.4);
+  const fov = THREE.MathUtils.degToRad(camera.fov || 45);
+  const distance = Math.max((maxSize / (2 * Math.tan(fov / 2))) * 1.44, 1.75);
+  const selectedTargetX = selectedGroup?.entries.find((entry) => typeof entry.targetX === "number")?.targetX;
+  const selectedTargetZ = selectedGroup?.entries.find((entry) => typeof entry.targetZ === "number")?.targetZ;
+  const endTarget = new THREE.Vector3(
+    selectedTargetX ?? selectedCenter.x,
+    selectedCenter.y + selectedSize.y * 0.12,
+    selectedTargetZ ?? selectedCenter.z
+  );
+
+  const endPosition = endTarget.clone().add(new THREE.Vector3(0, Math.max(size.y * 0.36, 0.32), distance));
+
+  customizerCameraAnimation = {
+    startTime: performance.now(),
+    duration: 620,
+    startPosition: camera.position.clone(),
+    endPosition,
+    startUp: camera.up.clone(),
+    endUp: new THREE.Vector3(0, 1, 0),
+    startTarget: controls ? controls.target.clone() : customizerCameraTarget.clone(),
+    endTarget
+  };
+
+  customizerCameraTarget.copy(endTarget);
+  customizerFrontCameraOffset.copy(endPosition).sub(endTarget);
+  activeCameraView = "front";
+  syncCameraViewButtons();
+}
 
 function reindexCakeObjectsAfterSelectionRemoval(selectionIndex) {
   cakeObjects.forEach((entry) => {
@@ -5328,6 +6901,12 @@ function reindexCakeObjectsAfterSelectionRemoval(selectionIndex) {
       entry.outerFrostingObject?.traverse((child) => {
         child.userData.partIndex = entry.partIndex;
       });
+      entry.cupcakeSwirlGroup?.traverse((child) => {
+        child.userData.partIndex = entry.partIndex;
+      });
+      if (entry.object?.userData) {
+        entry.object.userData.partIndex = entry.partIndex;
+      }
     }
   });
 }
@@ -5424,12 +7003,6 @@ function removeCustomizerSelection(selectionIndex) {
 }
 
 function attachTierRowHandlers() {
-  orderSections.querySelectorAll(".tier-summary").forEach((row) => {
-    row.onclick = () => {
-      selectTier(Number(row.dataset.index));
-    };
-  });
-
   orderSections.querySelectorAll(".peek-toggle").forEach((button) => {
     button.onclick = (event) => {
       event.preventDefault();
@@ -5457,16 +7030,16 @@ function renderOrderRows() {
   mainSection.appendChild(mainList);
   orderSections.appendChild(mainSection);
 
-  let backupSection = null;
-  let backupList = null;
+  let addOnSection = null;
+  let addOnList = null;
 
-  if (selections.some((selection) => selection.kind === "backup" || selection.kind === "extra-backup")) {
-    backupSection = document.createElement("div");
-    backupSection.className = "order-section";
-    backupList = document.createElement("div");
-    backupList.className = "backup-list";
-    backupSection.appendChild(backupList);
-    orderSections.appendChild(backupSection);
+  if (selections.some((selection) => selection.kind !== "main")) {
+    addOnSection = document.createElement("div");
+    addOnSection.className = "order-section order-add-ons-section";
+    addOnList = document.createElement("div");
+    addOnList.className = "backup-list add-on-list";
+    addOnSection.appendChild(addOnList);
+    orderSections.appendChild(addOnSection);
   }
 
   selections.forEach((selection, index) => {
@@ -5474,6 +7047,17 @@ function renderOrderRows() {
     tierRow.className = "tier-summary";
     tierRow.dataset.index = index;
     tierRow.dataset.kind = selection.kind;
+    tierRow.tabIndex = 0;
+    tierRow.setAttribute("role", "button");
+    tierRow.setAttribute("aria-label", `Edit ${selection.label}`);
+    tierRow.addEventListener("click", () => {
+      selectTier(index);
+    });
+    tierRow.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      selectTier(index);
+    });
     if (selection.size) tierRow.dataset.size = selection.size;
     const showPeekToggle = shouldShowPeekToggle(index);
 
@@ -5503,13 +7087,13 @@ function renderOrderRows() {
       removeButton.type = "button";
       removeButton.className = "tier-remove-btn";
       removeButton.dataset.index = index;
-      removeButton.setAttribute("aria-label", selection.kind === "extra-backup" ? "Remove backup cake" : "Remove tier");
+      removeButton.setAttribute("aria-label", selection.kind === "cupcakes" ? "Remove cupcakes" : isBackupKind(selection.kind) ? "Remove backup cake" : "Remove tier");
       removeButton.textContent = "x";
       tierRow.querySelector(".tier-row-actions")?.appendChild(removeButton);
     }
 
-    if (selection.kind === "backup" || selection.kind === "extra-backup") {
-      backupList?.appendChild(tierRow);
+    if (selection.kind !== "main") {
+      addOnList?.appendChild(tierRow);
     } else {
       mainList.appendChild(tierRow);
     }
@@ -5549,7 +7133,9 @@ function updatePrice() {
 }
 
 function updateTierTitle(index) {
-  const baseLabel = selections[index].label;
+  const baseLabel = selections[index].kind === "cupcakes"
+    ? getCupcakeDozenLabel(selections[index].cupcakeCount)
+    : selections[index].label;
   const titleEl = getTierTitleEl(index);
 
   if (!titleEl) return;
@@ -5573,7 +7159,8 @@ function isBackupPart(index) {
 function shouldShowTierRemoveButton(index) {
   const selection = selections[index];
   if (!selection) return false;
-  if (selection.kind === "extra-backup") return true;
+  if (isBackupPart(index)) return true;
+  if (selection.kind === "cupcakes") return true;
   if (selection.kind !== "main") return false;
 
   const mainIndexes = selections
@@ -5589,14 +7176,22 @@ function refreshTierPreview(index) {
   if (!tierObject) return;
 
   applyTierColorsToObject(tierObject.object, selections[index]);
+  void syncCupcakeFrostingForIndex(index);
   void syncOuterFrostingForIndex(index);
   void syncDecorForIndex(index);
 }
 
 function selectTier(index) {
   activeTierIndex = index;
+  activeCustomizerTierIndex = index;
+  syncTierRowStates?.();
+  syncCupcakePreviewWindowVisibility?.(index !== null && isCupcakeKind(selections[index]?.kind));
 
   setActiveCakeTier(index);
+  syncCupcakePreviewWindowVisibility?.(index !== null && isCupcakeKind(selections[index]?.kind));
+  syncFocusedSelectionFrame();
+  requestAnimationFrame(syncFocusedSelectionFrame);
+  syncTierRowStates?.();
   scrollTierRowIntoView(index);
 
   if (index === null) {
@@ -5653,14 +7248,9 @@ installCustomizerKeyboardNav();
 
 renderOrderRows();
 
-const restoredTierIndex = Number.isInteger(restoredCustomizerState?.activeTierIndex)
-  && restoredCustomizerState.activeTierIndex >= 0
-  && restoredCustomizerState.activeTierIndex < selections.length
-    ? restoredCustomizerState.activeTierIndex
-    : (selections.length > 0 ? 0 : null);
-
-setTimeout(async () => {
-  await initCakeBuilder3D(recommendation, getCurrentBuilderParts());
+async function rebuildCustomizerScene(nextActiveIndex = activeTierIndex, { snap = true } = {}) {
+  await initCakeBuilder3D(recommendation, getCurrentBuilderParts(), { showCameraGizmo: true });
+  applyAllCustomizerSelectionColors();
 
   for (let index = 0; index < selections.length; index += 1) {
     if (selections[index]?.kind === "extra-backup") {
@@ -5668,20 +7258,48 @@ setTimeout(async () => {
     }
   }
 
+  applyAllCustomizerSelectionColors();
+
   await Promise.all(selections.map((_, index) => syncOuterFrostingForIndex(index)));
+  await Promise.all(selections.map((_, index) => syncCupcakeFrostingForIndex(index)));
   await Promise.all(selections.map((_, index) => syncDecorForIndex(index)));
 
-  if (restoredTierIndex !== null) {
-    selectTier(restoredTierIndex);
+  if (nextActiveIndex !== null && selections[nextActiveIndex]) {
+    selectTier(nextActiveIndex);
   } else {
-    selectTier(null);
+    selectTier(selections.length ? selections.length - 1 : null);
   }
 
-  updatePrice();
-  persistCustomizerState(openSummaryOnLoad ? "summary" : "customizer");
+  if (snap) {
+    snapCakeObjectsToTargets();
+  }
+  if (isCupcakeKind(selections[activeTierIndex]?.kind)) {
+    frameCupcakeStackForEditing();
+  }
+}
 
-  if (openSummaryOnLoad) {
-    renderOrderSummaryPage();
+const restoredTierIndex = Number.isInteger(restoredCustomizerState?.activeTierIndex)
+  && restoredCustomizerState.activeTierIndex >= 0
+  && restoredCustomizerState.activeTierIndex < selections.length
+    ? restoredCustomizerState.activeTierIndex
+    : (selections.length > 0 ? 0 : null);
+
+setTimeout(async () => {
+  try {
+    await rebuildCustomizerScene(restoredTierIndex);
+    updatePrice();
+  } catch (error) {
+    console.warn("Unable to finish restoring customizer scene", error);
+  } finally {
+    if (openSummaryOnLoad) {
+      renderOrderSummaryPage();
+    } else if (openFulfillmentOnLoad) {
+      setCustomizerStep("fulfillment");
+    } else if (openDecorOnLoad) {
+      setCustomizerStep("decor");
+    } else {
+      persistCustomizerState();
+    }
   }
 }, 0);
 
@@ -5689,8 +7307,44 @@ decorToggle?.addEventListener("click", () => {
   setAccordionSection("decor");
 });
 
+edibleImageToggle?.addEventListener("click", () => {
+  const isOpen = edibleImageToggle.getAttribute("aria-expanded") === "true";
+  setAccordionSection(isOpen ? "decor" : "edible-image");
+});
+
 flavorToggle.addEventListener("click", () => {
   setAccordionSection("flavor");
+});
+
+edibleImageRequestedInput?.addEventListener("change", () => {
+  if (activeTierIndex === null || !selections[activeTierIndex]?.size) return;
+
+  selections[activeTierIndex].edibleImage = edibleImageRequestedInput.checked;
+  syncDecorButtons(activeTierIndex);
+  persistCustomizerState();
+});
+
+edibleImageFileInput?.addEventListener("change", () => {
+  if (activeTierIndex === null || !selections[activeTierIndex]?.size) return;
+
+  const fileName = edibleImageFileInput.files?.[0]?.name || "";
+  selections[activeTierIndex].edibleImageFileName = fileName;
+  if (fileName) {
+    selections[activeTierIndex].edibleImage = true;
+  }
+  syncDecorButtons(activeTierIndex);
+  persistCustomizerState();
+});
+
+edibleImageNotesInput?.addEventListener("input", () => {
+  if (activeTierIndex === null || !selections[activeTierIndex]?.size) return;
+
+  selections[activeTierIndex].edibleImageNotes = edibleImageNotesInput.value || "";
+  if (edibleImageNotesInput.value.trim()) {
+    selections[activeTierIndex].edibleImage = true;
+  }
+  syncDecorButtons(activeTierIndex);
+  persistCustomizerState();
 });
 
 decorOptionButtons.forEach((button) => {
@@ -5801,7 +7455,65 @@ extraBackupToggle.addEventListener("click", () => {
 });
 
 extraBackupSizeButtons.forEach((button) => {
-  button.addEventListener("click", async () => {
+  button.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const selectedCupcakeCount = Number(button.dataset.cupcakes);
+    if (selectedCupcakeCount) {
+      const cupcakeAddAnimationState = getCupcakeAddAnimationState();
+      const newCupcakeSelection = {
+        label: "1 Dozen Cupcakes",
+        size: null,
+        cupcakeCount: CUPCAKE_QUANTITY_STEP,
+        cupcakeDozenIndex: 0,
+        cupcakeDozenCount: 1,
+        extraCupcakes: true,
+        kind: "cupcakes",
+        flavor: "",
+        frosting: "",
+        filling: "",
+        signature: "",
+        decor: "",
+        shellBorderEdge: SHELL_BORDER_DEFAULT_EDGE,
+        swirlCount: DEFAULT_SWIRL_COUNT,
+        cherries: false,
+        outerFrosting: "",
+        outerFrostingColor: DEFAULT_OUTER_FROSTING_COLOR,
+        edibleImage: false,
+        edibleImageFileName: "",
+        edibleImageNotes: ""
+      };
+
+      selections.push(newCupcakeSelection);
+      const newCupcakeIndex = selections.length - 1;
+      activeTierIndex = newCupcakeIndex;
+      activeCustomizerTierIndex = newCupcakeIndex;
+      customizerPreviewSelections = selections;
+      persistCustomizerState();
+      renderOrderRows();
+      syncTierRowStates();
+      setAccordionSection("flavor");
+      requestAnimationFrame(() => scrollTierRowIntoView(newCupcakeIndex));
+      if (cakeSceneRoot && loader) {
+        await addCupcakeDozenObject(newCupcakeSelection, newCupcakeIndex);
+      } else {
+        await rebuildCustomizerScene(newCupcakeIndex, { snap: false });
+      }
+      prepareCupcakeAddAnimation(newCupcakeIndex, cupcakeAddAnimationState);
+      selectTier(newCupcakeIndex);
+      frameCupcakeStackForEditing();
+      updatePrice();
+      setAccordionSection("flavor");
+      scrollTierRowIntoView(newCupcakeIndex);
+      requestAnimationFrame(() => {
+        scrollTierRowIntoView(newCupcakeIndex);
+        signatureSelect?.focus();
+      });
+      persistCustomizerState();
+      return;
+    }
+
   const selectedExtraBackupSize = Number(button.dataset.size);
   const cake = getRoundCakeOption(selectedExtraBackupSize);
   if (!cake) return;
@@ -5819,7 +7531,10 @@ extraBackupSizeButtons.forEach((button) => {
     swirlCount: DEFAULT_SWIRL_COUNT,
     cherries: false,
     outerFrosting: "",
-    outerFrostingColor: DEFAULT_OUTER_FROSTING_COLOR
+    outerFrostingColor: DEFAULT_OUTER_FROSTING_COLOR,
+    edibleImage: false,
+    edibleImageFileName: "",
+    edibleImageNotes: ""
   };
 
   selections.push(newSelection);
@@ -5840,7 +7555,7 @@ orderSummaryBtn?.addEventListener("click", () => {
 });
 
 decorOrderSummaryBtn?.addEventListener("click", () => {
-  renderFulfillmentOverlay();
+  setCustomizerStep("fulfillment");
 });
 
 tierFlavorSelect.addEventListener("change", function () {
@@ -5983,8 +7698,8 @@ menuTab?.addEventListener("click", () => {
   openMenuPage();
 });
 
-galleryTab?.addEventListener("click", () => {
-  openGalleryPage();
+gingerbreadTab?.addEventListener("click", () => {
+  openGingerbreadPage();
 });
 
 displayCaseTab?.addEventListener("click", () => {
@@ -5998,8 +7713,12 @@ orderTab?.addEventListener("click", () => {
   });
 });
 
-clearSavedAppState();
-showLandingPageView();
+const savedAppState = getSavedAppState();
+if (savedAppState?.guests && ["recommendations", "customizer", "decor", "summary", "fulfillment"].includes(savedAppState.view)) {
+  initializeCakeFlow(Number(savedAppState.guests), savedAppState);
+} else if (!document.body.classList.contains("customizer-active")) {
+  showLandingPageView();
+}
 
 siteLogo?.addEventListener("click", () => {
   returnToLandingPage();
