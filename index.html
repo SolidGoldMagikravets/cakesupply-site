@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>Cake Supply</title>
   <link rel="icon" href="pixilart-drawing.png">
-  <link rel="stylesheet" href="style.css?v=cupcake-in-place-add-2">
+  <link rel="stylesheet" href="style.css?v=ombre-mesh-1">
   <script type="importmap">
   {
     "imports": {
@@ -16,7 +16,31 @@
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
 </head>
 
-  <body>
+  <body class="password-gate-locked">
+
+    <!-- PASSWORD GATE: Remove this section when launching the public site. -->
+    <div id="password-gate" class="password-gate" role="dialog" aria-modal="true" aria-label="Cake Supply">
+      <form id="password-gate-form" class="password-gate-card" action="javascript:void(0);">
+        <img src="logo_transparent.png" alt="Cake Supply" class="password-gate-logo">
+        <div class="password-gate-composition">
+          <div id="password-gate-cake" class="password-gate-cake" aria-hidden="true"></div>
+          <div class="password-gate-controls">
+            <input
+              type="password"
+              id="password-gate-input"
+              class="password-gate-input"
+              placeholder="Password"
+              aria-label="Password"
+              autocomplete="current-password"
+              required>
+            <button id="password-gate-submit" class="password-gate-submit" type="submit" aria-label="Enter password">→</button>
+          </div>
+        </div>
+        <p>new website coming soon</p>
+        <p id="password-gate-error" class="password-gate-error" role="alert" aria-live="polite"></p>
+      </form>
+    </div>
+    <!-- END PASSWORD GATE -->
 
     <div class="site-header">
       <div class="header-tab-group header-tab-group-left">
@@ -96,6 +120,7 @@
             <div class="display-case-back"></div>
             <div class="display-case-side display-case-side-left"></div>
             <div class="display-case-side display-case-side-right"></div>
+            <div id="display-case-daily-cakes" class="display-case-daily-cakes"></div>
             <div class="display-case-shelf display-case-shelf-top"></div>
             <div class="display-case-shelf display-case-shelf-middle"></div>
             <div class="display-case-shelf display-case-shelf-bottom"></div>
@@ -108,11 +133,56 @@
           </div>
           <div class="display-case-foot"></div>
         </div>
+        <div id="display-case-daily-info" class="display-case-daily-info"></div>
       </div>
     </div>
 <div id="customizer" style="display: none;"></div>
 
+<!-- PASSWORD GATE: Remove this script when launching the public site. -->
+<script>
+  (function () {
+    var PASSWORD_GATE_VALUE = "Lou42";
+    var PASSWORD_GATE_SESSION_KEY = "cake-supply-password-gate-unlocked";
+    var gate = document.getElementById("password-gate");
+    var form = document.getElementById("password-gate-form");
+    var input = document.getElementById("password-gate-input");
+    var error = document.getElementById("password-gate-error");
+
+    function unlockGate() {
+      document.body.classList.remove("password-gate-locked");
+      gate.setAttribute("hidden", "");
+      input.value = "";
+      error.textContent = "";
+    }
+
+    if (!gate || !form || !input || !error) {
+      document.body.classList.remove("password-gate-locked");
+      return;
+    }
+
+    if (sessionStorage.getItem(PASSWORD_GATE_SESSION_KEY) === "true") {
+      unlockGate();
+      return;
+    }
+
+    input.focus();
+
+    form.addEventListener("submit", function () {
+      if (input.value === PASSWORD_GATE_VALUE) {
+        sessionStorage.setItem(PASSWORD_GATE_SESSION_KEY, "true");
+        unlockGate();
+        return;
+      }
+
+      input.value = "";
+      error.textContent = "Incorrect password.";
+      input.focus();
+    });
+  }());
+</script>
+<!-- END PASSWORD GATE -->
+
 <script src="pricing.js"></script>
-  <script type="module" src="script.js?v=cupcake-in-place-add-2"></script>
+  <script type="module" src="script.js?v=ombre-mesh-1"></script>
 </body>
 </html>

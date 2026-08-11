@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const cakeModel = document.getElementById("cake-model");
+const passwordGateCake = document.getElementById("password-gate-cake");
 const landingCakeHero = document.getElementById("landing-cake-hero");
 const guestCountInput = document.getElementById("guest-count");
 const calculateButton = document.getElementById("calculate-btn");
@@ -16,6 +17,9 @@ const menuPage = document.getElementById("menu-page");
 const menuGrid = document.getElementById("menu-grid");
 const galleryPage = document.getElementById("gallery-page");
 const displayCasePage = document.getElementById("display-case-page");
+const displayCaseTitle = document.getElementById("display-case-page-title");
+const displayCaseDailyCakes = document.getElementById("display-case-daily-cakes");
+const displayCaseDailyInfo = document.getElementById("display-case-daily-info");
 const recommendationsPage = document.getElementById("recommendations-page");
 const recommendationsBackButton = document.getElementById("recommendations-back-btn");
 const siteLogo = document.getElementById("site-logo");
@@ -34,6 +38,8 @@ const LIVE_PREVIEW_DEBOUNCE_MS = 180;
 let activeHeroRecommendation = null;
 const HERO_SHARED_TRANSITION_MS = 720;
 let menuPreviewObserver = null;
+let displayCaseMidnightTimer = null;
+let displayCasePreviewCleanups = [];
 
 const CAKE_LIGHTING = {
   key: 2.65,
@@ -43,17 +49,56 @@ const CAKE_LIGHTING = {
 };
 
 const OUTER_FROSTING_DECOR = "outerfrosting";
+const STRIPED_OUTER_FROSTING_DECOR = "striped-outerfrosting";
+const OMBRE_OUTER_FROSTING_DECOR = "ombre-outerfrosting";
+const HORIZONTAL_COMB_OUTER_FROSTING_DECOR = "horizontal-comb-outerfrosting";
+const VERTICAL_COMB_OUTER_FROSTING_DECOR = "vertical-comb-outerfrosting";
+const RUSTIC_OUTER_FROSTING_DECOR = "rustic-outerfrosting";
+const NAKED_OUTER_FROSTING_DECOR = "naked-outerfrosting";
+const OUTER_FROSTING_FINISH_OPTIONS = [
+  { value: OUTER_FROSTING_DECOR, label: "Smooth" },
+  { value: STRIPED_OUTER_FROSTING_DECOR, label: "Striped" },
+  { value: OMBRE_OUTER_FROSTING_DECOR, label: "Ombre" },
+  { value: HORIZONTAL_COMB_OUTER_FROSTING_DECOR, label: "Horizontal Comb" },
+  { value: VERTICAL_COMB_OUTER_FROSTING_DECOR, label: "Vertical Comb" },
+  { value: RUSTIC_OUTER_FROSTING_DECOR, label: "Rustic" },
+  { value: NAKED_OUTER_FROSTING_DECOR, label: "Naked" }
+];
 const SHELL_BORDER_DECOR = "shell-border";
 const SWIRL_DECOR = "swirls";
+const CHERRY_DECOR = "cherries";
+const SWAG_DECOR = "swags";
+const SHELL_SWAG_DECOR = "shell-swag";
+const EDIBLE_IMAGE_DECOR = "edible-image";
+const DECORATION_LAYER_TYPES = [SHELL_BORDER_DECOR, SWAG_DECOR, SHELL_SWAG_DECOR, SWIRL_DECOR, CHERRY_DECOR];
+const SHELL_BORDER_EDGES = ["top", "bottom"];
 const DEFAULT_OUTER_FROSTING_COLOR = "#fff7c7";
+const DEFAULT_STRIPE_FROSTING_COLOR = "#f8c7d0";
 const DEFAULT_SHELL_FROSTING_COLOR = "#fffdf4";
 const CUPCAKE_LINER_COLOR = "#f8f3e8";
 const CUPCAKE_MODEL_SRC = "models/cupcake_single.glb";
 const SHELL_BORDER_MODEL_SRC = "decoration/shell_single1.glb";
 const SWIRL_MODEL_SRC = "decoration/swirl1.glb";
 const CHERRY_MODEL_SRC = "decoration/cherry1.glb";
+const SWAG_MODEL_SRC = "decoration/swag1.glb";
 const SWIRL_ALLOWED_COUNTS = [6, 8, 12];
 const DEFAULT_SWIRL_COUNT = 8;
+const SWAG_PIECES_PER_DRAPE = 13;
+const SWAG_SURFACE_OFFSET = 0.006;
+const SWAG_ANCHOR_HEIGHT_RATIO = 0.88;
+const SWAG_DROP_HEIGHT_RATIO = 0.23;
+const SWAG_CENTER_LIFT_HEIGHT_RATIO = 0.004;
+const SWAG_HORIZONTAL_COMPRESSION = 0.9;
+const SWAG_CURVE_ROTATION_STRENGTH = 0.48;
+const SWAG_MIN_SCALE = 0.02;
+const SWAG_MAX_SCALE = 0.13;
+const SWAG_SHELL_TRIM_PIECES_PER_DRAPE = 9;
+const SWAG_SHELL_TRIM_DROP_RATIO = 0.42;
+const SWAG_SHELL_TRIM_Y_OFFSET_RATIO = 0.018;
+const SWAG_SHELL_TRIM_RADIAL_OFFSET = 0.01;
+const SWAG_SHELL_TRIM_MIN_SCALE = 0.022;
+const SWAG_SHELL_TRIM_MAX_SCALE = 0.046;
+const STRIPED_OUTER_FROSTING_STRIPE_COUNT = 7;
 const SWIRL_TOP_Y_OFFSET = 0.025;
 const SWIRL_RADIUS_OFFSET = -0.026;
 const CHERRY_TOP_Y_OFFSET = 0.028;
@@ -64,6 +109,17 @@ const SHELL_BORDER_OVERLAP = 1.12;
 const SHELL_BORDER_DEFAULT_EDGE = "top";
 const SHELL_BORDER_TOP_Y_OFFSET = -0.018;
 const SHELL_BORDER_BOTTOM_Y_OFFSET = -0.006;
+const DEFAULT_EDIBLE_IMAGE_SCALE = 1;
+const DEFAULT_EDIBLE_IMAGE_RADIUS = 0.92;
+const DEFAULT_EDIBLE_IMAGE_ROTATION = 0;
+const DEFAULT_EDIBLE_IMAGE_POSITION = { x: 0, y: 0 };
+const EDIBLE_IMAGE_TOP_OFFSET = 0.002;
+const DEFAULT_OMBRE_FROSTING_COLOR = "#f8c7d0";
+const OUTER_FROSTING_MESH_FINISHES = [
+  OUTER_FROSTING_DECOR,
+  STRIPED_OUTER_FROSTING_DECOR,
+  OMBRE_OUTER_FROSTING_DECOR
+];
 
 const cakeOptions = [
   { name: '6" cake', servings: 10, type: 'round', size: 6 },
@@ -92,6 +148,172 @@ const CUPCAKE_DOZEN_PRICE = 35;
 const CUPCAKE_QUANTITY_STEP = 12;
 const CUPCAKE_MAX_STANDALONE = 60;
 const CUPCAKE_MAX_SUPPLEMENT = 36;
+
+function getDefaultEdibleImageSettings() {
+  return {
+    edibleImage: false,
+    edibleImageFileName: "",
+    edibleImageNotes: "",
+    edibleImageScale: DEFAULT_EDIBLE_IMAGE_SCALE,
+    edibleImageRadius: DEFAULT_EDIBLE_IMAGE_RADIUS,
+    edibleImageRotation: DEFAULT_EDIBLE_IMAGE_ROTATION,
+    edibleImageX: DEFAULT_EDIBLE_IMAGE_POSITION.x,
+    edibleImageY: DEFAULT_EDIBLE_IMAGE_POSITION.y,
+    edibleImageDataUrl: ""
+  };
+}
+
+const DISPLAY_CASE_CAKE_POOL = [
+  {
+    name: "Berry Parade",
+    size: 8,
+    flavor: "Vanilla",
+    frosting: "Vanilla Buttercream",
+    filling: "Strawberry Puree",
+    finish: "Striped",
+    outerFrosting: STRIPED_OUTER_FROSTING_DECOR,
+    outerFrostingColor: "#fff7c7",
+    outerFrostingStripeColor: "#f8c7d0",
+    outerFrostingOmbreColor: DEFAULT_OMBRE_FROSTING_COLOR,
+    decor: SWIRL_DECOR,
+    swirlCount: 8,
+    cherries: true,
+    decorations: "Swirls, cherries",
+    price: 92
+  },
+  {
+    name: "Blue Ribbon Vanilla",
+    size: 6,
+    flavor: "Vanilla",
+    frosting: "Cream Cheese",
+    filling: "Blueberry Puree",
+    finish: "Smooth",
+    outerFrosting: OUTER_FROSTING_DECOR,
+    outerFrostingColor: "#b9c7f2",
+    outerFrostingStripeColor: "",
+    outerFrostingOmbreColor: DEFAULT_OMBRE_FROSTING_COLOR,
+    decor: SHELL_BORDER_DECOR,
+    shellBorderEdge: "top",
+    decorations: "Shell border",
+    price: 68
+  },
+  {
+    name: "Garden Party",
+    size: 8,
+    flavor: "Lemon",
+    frosting: "Vanilla Buttercream",
+    filling: "Lemon Curd",
+    finish: "Striped",
+    outerFrosting: STRIPED_OUTER_FROSTING_DECOR,
+    outerFrostingColor: "#c9dfbd",
+    outerFrostingStripeColor: "#fff7c7",
+    outerFrostingOmbreColor: DEFAULT_OMBRE_FROSTING_COLOR,
+    decor: SWIRL_DECOR,
+    swirlCount: 12,
+    cherries: false,
+    decorations: "Swirls",
+    price: 96
+  },
+  {
+    name: "Mocha Dot",
+    size: 6,
+    flavor: "Chocolate",
+    frosting: "Coffee Buttercream",
+    filling: "Dulce De Leche",
+    finish: "Smooth",
+    outerFrosting: OUTER_FROSTING_DECOR,
+    outerFrostingColor: "#8b6659",
+    outerFrostingStripeColor: "",
+    outerFrostingOmbreColor: DEFAULT_OMBRE_FROSTING_COLOR,
+    decor: SWIRL_DECOR,
+    swirlCount: 6,
+    cherries: true,
+    decorations: "Swirls, cherries",
+    price: 74
+  },
+  {
+    name: "Pink Confetti",
+    size: 10,
+    flavor: "Marble",
+    frosting: "White Chocolate Ganache",
+    filling: "Raspberry Puree",
+    finish: "Striped",
+    outerFrosting: STRIPED_OUTER_FROSTING_DECOR,
+    outerFrostingColor: "#f8c7d0",
+    outerFrostingStripeColor: "#b9c7f2",
+    outerFrostingOmbreColor: DEFAULT_OMBRE_FROSTING_COLOR,
+    decor: SHELL_BORDER_DECOR,
+    shellBorderEdge: "bottom",
+    decorations: "Bottom shell border",
+    price: 128
+  },
+  {
+    name: "Coconut Cloud",
+    size: 8,
+    flavor: "Coconut",
+    frosting: "Coconut Cream Buttercream",
+    filling: "Vanilla Custard",
+    finish: "Smooth",
+    outerFrosting: OUTER_FROSTING_DECOR,
+    outerFrostingColor: "#fff7c7",
+    outerFrostingStripeColor: "",
+    outerFrostingOmbreColor: DEFAULT_OMBRE_FROSTING_COLOR,
+    decor: SHELL_BORDER_DECOR,
+    shellBorderEdge: "top",
+    decorations: "Shell border",
+    price: 88
+  },
+  {
+    name: "Key Lime Picnic",
+    size: 6,
+    flavor: "Coconut",
+    frosting: "White Chocolate Ganache",
+    filling: "Key Lime Curd",
+    finish: "Striped",
+    outerFrosting: STRIPED_OUTER_FROSTING_DECOR,
+    outerFrostingColor: "#c9dfbd",
+    outerFrostingStripeColor: "#f8c7d0",
+    outerFrostingOmbreColor: DEFAULT_OMBRE_FROSTING_COLOR,
+    decor: SWIRL_DECOR,
+    swirlCount: 8,
+    cherries: true,
+    decorations: "Swirls, cherries",
+    price: 78
+  },
+  {
+    name: "Tuxedo Trim",
+    size: 10,
+    flavor: "Chocolate",
+    frosting: "Chocolate Mousse",
+    filling: "White Chocolate Ganache",
+    finish: "Smooth",
+    outerFrosting: OUTER_FROSTING_DECOR,
+    outerFrostingColor: "#fffdf4",
+    outerFrostingStripeColor: "",
+    outerFrostingOmbreColor: DEFAULT_OMBRE_FROSTING_COLOR,
+    decor: SHELL_BORDER_DECOR,
+    shellBorderEdge: "top",
+    decorations: "Shell border",
+    price: 122
+  },
+  {
+    name: "Raspberry Skies",
+    size: 8,
+    flavor: "Vanilla",
+    frosting: "Raspberry Buttercream",
+    filling: "Passionfruit Curd",
+    finish: "Striped",
+    outerFrosting: STRIPED_OUTER_FROSTING_DECOR,
+    outerFrostingColor: "#b9c7f2",
+    outerFrostingStripeColor: "#fff7c7",
+    outerFrostingOmbreColor: DEFAULT_OMBRE_FROSTING_COLOR,
+    decor: SWIRL_DECOR,
+    swirlCount: 8,
+    cherries: false,
+    decorations: "Swirls",
+    price: 94
+  }
+];
 
 function getSavedAppState() {
   try {
@@ -322,7 +544,129 @@ function openGingerbreadPage() {
 function openDisplayCasePage() {
   debouncedLandingHeroPreviewUpdate.cancel();
   showDisplayCasePageView();
+  renderDisplayCasePage();
   setSavedAppState({ view: "display-case" });
+}
+
+function formatDisplayCaseDate(date = new Date()) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric"
+  }).format(date);
+}
+
+function getDisplayCaseDateKey(date = new Date()) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function getDisplayCaseSeed(dateKey) {
+  return [...dateKey].reduce((seed, char) => {
+    return Math.imul(seed ^ char.charCodeAt(0), 2654435761) >>> 0;
+  }, 0x5f3759df);
+}
+
+function createDisplayCaseRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state += 0x6D2B79F5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function getDailyDisplayCaseCakes(date = new Date()) {
+  const random = createDisplayCaseRandom(getDisplayCaseSeed(getDisplayCaseDateKey(date)));
+  const pool = DISPLAY_CASE_CAKE_POOL.map((cake) => ({ ...cake }));
+
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const swapIndex = Math.floor(random() * (i + 1));
+    [pool[i], pool[swapIndex]] = [pool[swapIndex], pool[i]];
+  }
+
+  return pool.slice(0, 3);
+}
+
+function escapeDisplayCaseHTML(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatDisplayCaseMoney(value) {
+  return Number(value || 0).toFixed(2).replace(/\.00$/, "");
+}
+
+function teardownDisplayCasePreviews() {
+  displayCasePreviewCleanups.forEach((cleanup) => cleanup?.());
+  displayCasePreviewCleanups = [];
+}
+
+function scheduleDisplayCaseMidnightUpdate() {
+  if (displayCaseMidnightTimer) {
+    window.clearTimeout(displayCaseMidnightTimer);
+  }
+
+  const now = new Date();
+  const nextMidnight = new Date(now);
+  nextMidnight.setHours(24, 0, 1, 0);
+  displayCaseMidnightTimer = window.setTimeout(() => {
+    if (displayCasePage && !displayCasePage.hidden) {
+      renderDisplayCasePage();
+    }
+    scheduleDisplayCaseMidnightUpdate();
+  }, Math.max(nextMidnight.getTime() - now.getTime(), 1000));
+}
+
+function renderDisplayCasePage(date = new Date()) {
+  if (displayCaseTitle) {
+    displayCaseTitle.textContent = formatDisplayCaseDate(date);
+  }
+  if (!displayCaseDailyCakes) return;
+
+  teardownDisplayCasePreviews();
+  const cakes = getDailyDisplayCaseCakes(date);
+  displayCaseDailyCakes.innerHTML = cakes.map((cake, index) => `
+    <div class="display-case-cake-card" data-display-case-index="${index}">
+      <div class="display-case-cake-preview" aria-label="${escapeDisplayCaseHTML(cake.name)} preview"></div>
+    </div>
+  `).join("");
+
+  if (displayCaseDailyInfo) {
+    displayCaseDailyInfo.innerHTML = cakes.map((cake) => `
+      <article class="display-case-cake-info">
+        <h2>${escapeDisplayCaseHTML(cake.name)}</h2>
+        <p>${escapeDisplayCaseHTML(cake.flavor)} cake</p>
+        <p>${escapeDisplayCaseHTML(cake.frosting)}${cake.filling ? `, ${escapeDisplayCaseHTML(cake.filling)}` : ""}</p>
+        <p>${escapeDisplayCaseHTML(cake.finish)} finish${cake.decorations ? `, ${escapeDisplayCaseHTML(cake.decorations)}` : ""}</p>
+        <strong>$${formatDisplayCaseMoney(cake.price)}</strong>
+      </article>
+    `).join("");
+  }
+
+  cakes.forEach((cake, index) => {
+    const preview = displayCaseDailyCakes.querySelector(`[data-display-case-index="${index}"] .display-case-cake-preview`);
+    if (!preview) return;
+
+    void initDisplayCaseCakePreview(preview, cake).then((cleanup) => {
+      if (typeof cleanup === "function") {
+        displayCasePreviewCleanups.push(cleanup);
+      }
+    }).catch((error) => {
+      console.warn("Unable to render display case cake preview", error);
+    });
+  });
+
+  scheduleDisplayCaseMidnightUpdate();
 }
 
 function renderHeroRecommendationCard(recommendation, getBasePrice) {
@@ -353,6 +697,21 @@ function prefersReducedMotion() {
 
 function getHeroPreviewElement() {
   return landingCakeHero?.querySelector("canvas") || landingCakeHero || null;
+}
+
+function getHeroPreviewTransitionSnapshot() {
+  const element = getHeroPreviewElement();
+  if (!element) return null;
+
+  const elementRect = element.getBoundingClientRect();
+  const fallbackRect = landingCakeHero?.getBoundingClientRect();
+  const rect = elementRect.width && elementRect.height
+    ? elementRect
+    : fallbackRect?.width && fallbackRect?.height
+      ? fallbackRect
+      : elementRect;
+
+  return { element, rect };
 }
 
 function getNearestPreviewRecommendationForGuests(guests) {
@@ -408,6 +767,7 @@ function animateHeroPreviewIntoRecommendation(heroSnapshot, recommendation, onCo
 
   if (!sourceElement || !sourceRect || !recommendation || prefersReducedMotion()) {
     document.body.classList.remove("results-transitioning");
+    document.body.classList.remove("recommendations-entering");
     onComplete?.();
     return;
   }
@@ -418,6 +778,7 @@ function animateHeroPreviewIntoRecommendation(heroSnapshot, recommendation, onCo
 
   if (!targetPreview) {
     document.body.classList.remove("results-transitioning");
+    document.body.classList.remove("recommendations-entering");
     onComplete?.();
     return;
   }
@@ -425,6 +786,7 @@ function animateHeroPreviewIntoRecommendation(heroSnapshot, recommendation, onCo
   const targetRect = targetPreview.getBoundingClientRect();
   if (!targetRect.width || !targetRect.height) {
     document.body.classList.remove("results-transitioning");
+    document.body.classList.remove("recommendations-entering");
     onComplete?.();
     return;
   }
@@ -454,6 +816,7 @@ function animateHeroPreviewIntoRecommendation(heroSnapshot, recommendation, onCo
     targetPreview.style.opacity = "";
     targetPreview.style.visibility = "";
     document.body.classList.remove("results-transitioning");
+    document.body.classList.remove("recommendations-entering");
     onComplete?.();
   }, HERO_SHARED_TRANSITION_MS + 40);
 }
@@ -585,6 +948,22 @@ let pendingLandingHeroTierSizes = null;
 let landingHeroFrameBox = null;
 let landingHeroSceneIndex = 0;
 let landingHeroUsesBlankPreview = false;
+let passwordGateRenderer = null;
+let passwordGateScene = null;
+let passwordGateCamera = null;
+let passwordGateGroup = null;
+let passwordGateTierEntries = [];
+let passwordGateAnimationFrame = null;
+let passwordGateInterval = null;
+let passwordGateResizeHandler = null;
+let passwordGateVisibilityHandler = null;
+let passwordGateLockObserver = null;
+let passwordGateStepTimeouts = [];
+let passwordGateSceneIndex = 0;
+const PASSWORD_GATE_TIER_SIZES = [10, 8, 6];
+const PASSWORD_GATE_FLAVOR_INTERVAL_MS = 3000;
+const PASSWORD_GATE_SCENE_INTERVAL_MS = landingHeroScenes[0].length * PASSWORD_GATE_FLAVOR_INTERVAL_MS;
+const PASSWORD_GATE_FRAME_PADDING = 1.78;
 
 function debounce(callback, wait) {
   let timeoutId = null;
@@ -1111,6 +1490,322 @@ async function initLandingHero() {
   window.addEventListener("resize", landingHeroResizeHandler);
 
   scheduleLandingHeroRecenters();
+}
+
+function clearPasswordGateStepTimeouts() {
+  passwordGateStepTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+  passwordGateStepTimeouts = [];
+}
+
+function getPasswordGateEntriesBox() {
+  const boxes = passwordGateTierEntries
+    .filter((entry) => entry.object)
+    .map((entry) => new THREE.Box3().setFromObject(entry.object));
+
+  if (!boxes.length) return null;
+  return boxes.reduce((combinedBox, box) => combinedBox.union(box), boxes[0].clone());
+}
+
+function framePasswordGateCamera() {
+  if (!passwordGateCamera || !passwordGateGroup) return;
+
+  passwordGateGroup.position.set(0, 0, 0);
+  passwordGateGroup.updateWorldMatrix(true, true);
+
+  const box = getPasswordGateEntriesBox();
+  if (!box || box.isEmpty()) return;
+
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  box.getCenter(center);
+  box.getSize(size);
+
+  passwordGateGroup.position.sub(center);
+  passwordGateGroup.updateWorldMatrix(true, true);
+
+  const width = Math.max(size.x, 0.001);
+  const height = Math.max(size.y, 0.001);
+  const verticalFov = THREE.MathUtils.degToRad(passwordGateCamera.fov);
+  const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * passwordGateCamera.aspect);
+  const distanceForHeight = height / (2 * Math.tan(verticalFov / 2));
+  const distanceForWidth = width / (2 * Math.tan(horizontalFov / 2));
+  const distance = Math.max(distanceForHeight, distanceForWidth) * PASSWORD_GATE_FRAME_PADDING;
+
+  passwordGateCamera.position.set(0, 0, distance);
+  passwordGateCamera.lookAt(0, 0, 0);
+  passwordGateCamera.near = Math.max(distance / 100, 0.01);
+  passwordGateCamera.far = Math.max(distance * 100, 100);
+  passwordGateCamera.updateProjectionMatrix();
+}
+
+function getPasswordGateSceneCombo(sceneIndex, entryIndex) {
+  const sceneConfig = landingHeroScenes[sceneIndex % landingHeroScenes.length];
+  return sceneConfig[entryIndex % sceneConfig.length];
+}
+
+function getPasswordGateComboColors(combo) {
+  return {
+    cake: colorToThree(getFlavorColor(cakeColorMap, combo.cake, defaultTierColors.cake)),
+    frosting: colorToThree(getFlavorColor(frostingColorMap, combo.frosting, defaultTierColors.frosting)),
+    filling: combo.filling
+      ? colorToThree(getFlavorColor(fillingColorMap, combo.filling, defaultTierColors.filling))
+      : null
+  };
+}
+
+function applyPasswordGateSceneImmediately(sceneIndex) {
+  if (!passwordGateTierEntries.length) return;
+
+  passwordGateTierEntries.forEach((entry, index) => {
+    const colors = getPasswordGateComboColors(getPasswordGateSceneCombo(sceneIndex, index));
+    entry.targetColors = colors;
+    entry.currentColors = {
+      cake: colors.cake.clone(),
+      frosting: colors.frosting.clone(),
+      filling: colors.filling ? colors.filling.clone() : null
+    };
+
+    updatePasswordGateTierMaterialColors(entry);
+  });
+}
+
+function queuePasswordGateSceneTransition(sceneIndex) {
+  if (!passwordGateTierEntries.length) return;
+
+  clearPasswordGateStepTimeouts();
+
+  passwordGateTierEntries.forEach((entry, index) => {
+    const timeoutId = window.setTimeout(() => {
+      entry.targetColors = getPasswordGateComboColors(getPasswordGateSceneCombo(sceneIndex, index));
+    }, index * PASSWORD_GATE_FLAVOR_INTERVAL_MS);
+
+    passwordGateStepTimeouts.push(timeoutId);
+  });
+}
+
+function updatePasswordGateTierMaterialColors(entry) {
+  if (!entry?.object) return;
+
+  applyTierColorsToObject(entry.object, {
+    flavor: "__landing__",
+    frosting: "__landing__",
+    filling: entry.targetColors?.filling ? "__landing__" : ""
+  });
+
+  entry.object.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      const role = material.userData?.role;
+      const current = entry.currentColors?.[role];
+
+      if (role === "filling") {
+        material.transparent = !current;
+        material.opacity = current ? 1 : 0;
+      }
+
+      if (current && material.color) {
+        material.color.copy(current);
+      }
+    });
+  });
+}
+
+function updatePasswordGateTierColors() {
+  passwordGateTierEntries.forEach((entry) => {
+    if (!entry.targetColors || !entry.currentColors) return;
+
+    Object.keys(entry.currentColors).forEach((role) => {
+      const current = entry.currentColors[role];
+      const target = entry.targetColors[role];
+
+      if (!current || !target) return;
+      current.lerp(target, 0.08);
+    });
+
+    updatePasswordGateTierMaterialColors(entry);
+  });
+}
+
+function startPasswordGateSceneInterval() {
+  if (passwordGateInterval || document.hidden) return;
+
+  passwordGateInterval = window.setInterval(() => {
+    passwordGateSceneIndex = (passwordGateSceneIndex + 1) % landingHeroScenes.length;
+    queuePasswordGateSceneTransition(passwordGateSceneIndex);
+  }, PASSWORD_GATE_SCENE_INTERVAL_MS);
+}
+
+function stopPasswordGateSceneInterval() {
+  if (!passwordGateInterval) return;
+  clearInterval(passwordGateInterval);
+  passwordGateInterval = null;
+}
+
+function startPasswordGateAnimation() {
+  if (passwordGateAnimationFrame || document.hidden) return;
+
+  const animatePasswordGateCake = () => {
+    passwordGateAnimationFrame = requestAnimationFrame(animatePasswordGateCake);
+
+    if (!passwordGateRenderer || !passwordGateScene || !passwordGateCamera || !passwordGateGroup) return;
+
+    updatePasswordGateTierColors();
+    passwordGateRenderer.render(passwordGateScene, passwordGateCamera);
+  };
+
+  animatePasswordGateCake();
+}
+
+function stopPasswordGateAnimation() {
+  if (!passwordGateAnimationFrame) return;
+  cancelAnimationFrame(passwordGateAnimationFrame);
+  passwordGateAnimationFrame = null;
+}
+
+function stopPasswordGateCake() {
+  stopPasswordGateAnimation();
+  stopPasswordGateSceneInterval();
+  clearPasswordGateStepTimeouts();
+}
+
+async function initPasswordGateCake() {
+  if (!passwordGateCake || !document.body.classList.contains("password-gate-locked")) return;
+
+  stopPasswordGateCake();
+
+  if (passwordGateResizeHandler) {
+    window.removeEventListener("resize", passwordGateResizeHandler);
+    passwordGateResizeHandler = null;
+  }
+
+  if (passwordGateVisibilityHandler) {
+    document.removeEventListener("visibilitychange", passwordGateVisibilityHandler);
+    passwordGateVisibilityHandler = null;
+  }
+
+  passwordGateCake.innerHTML = "";
+  passwordGateTierEntries = [];
+  passwordGateSceneIndex = 0;
+
+  passwordGateScene = new THREE.Scene();
+  passwordGateScene.background = null;
+
+  const width = passwordGateCake.clientWidth || 520;
+  const height = passwordGateCake.clientHeight || 520;
+
+  passwordGateCamera = new THREE.PerspectiveCamera(30, width / height, 0.1, 100);
+  passwordGateRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  passwordGateRenderer.setPixelRatio(window.devicePixelRatio);
+  passwordGateRenderer.setClearColor(0xffffff, 0);
+  passwordGateRenderer.setSize(width, height);
+  passwordGateRenderer.domElement.style.pointerEvents = "none";
+  passwordGateCake.appendChild(passwordGateRenderer.domElement);
+
+  const keyLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.key);
+  keyLight.position.set(3.5, 5.5, 4);
+  passwordGateScene.add(keyLight);
+
+  const fillLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.fill);
+  fillLight.position.set(-3.5, 3.5, 3);
+  passwordGateScene.add(fillLight);
+
+  const rimLight = new THREE.DirectionalLight(0xffffff, CAKE_LIGHTING.rim);
+  rimLight.position.set(0, 2.5, -4);
+  passwordGateScene.add(rimLight);
+
+  passwordGateScene.add(new THREE.AmbientLight(0xffffff, CAKE_LIGHTING.ambient));
+
+  passwordGateGroup = new THREE.Group();
+  passwordGateGroup.rotation.y = -0.22;
+  passwordGateScene.add(passwordGateGroup);
+
+  const localLoader = new GLTFLoader();
+  let currentHeight = 0;
+
+  for (const size of PASSWORD_GATE_TIER_SIZES) {
+    const gltf = await new Promise((resolve, reject) => {
+      localLoader.load(`models/tier_${size}.glb`, resolve, undefined, reject);
+    });
+
+    const tierModel = gltf.scene;
+    prepareTierMaterials(tierModel);
+
+    const box = new THREE.Box3().setFromObject(tierModel);
+    const tierHeight = box.max.y - box.min.y;
+    const tierCenterX = (box.min.x + box.max.x) / 2;
+    const tierCenterZ = (box.min.z + box.max.z) / 2;
+
+    tierModel.position.set(-tierCenterX, -box.min.y, -tierCenterZ);
+
+    const tier = new THREE.Group();
+    tier.add(tierModel);
+    tier.position.set(0, currentHeight, 0);
+    passwordGateGroup.add(tier);
+
+    passwordGateTierEntries.unshift({
+      size,
+      tierHeight,
+      object: tier,
+      currentColors: {
+        cake: colorToThree(defaultTierColors.cake),
+        frosting: colorToThree(defaultTierColors.frosting),
+        filling: colorToThree(defaultTierColors.filling)
+      },
+      targetColors: {
+        cake: colorToThree(defaultTierColors.cake),
+        frosting: colorToThree(defaultTierColors.frosting),
+        filling: colorToThree(defaultTierColors.filling)
+      }
+    });
+
+    currentHeight += tierHeight;
+  }
+
+  applyPasswordGateSceneImmediately(passwordGateSceneIndex);
+  framePasswordGateCamera();
+  passwordGateRenderer.render(passwordGateScene, passwordGateCamera);
+
+  startPasswordGateSceneInterval();
+  startPasswordGateAnimation();
+
+  passwordGateResizeHandler = () => {
+    if (!passwordGateCake || !passwordGateRenderer || !passwordGateCamera) return;
+
+    const nextWidth = passwordGateCake.clientWidth || 520;
+    const nextHeight = passwordGateCake.clientHeight || 520;
+    passwordGateCamera.aspect = nextWidth / nextHeight;
+    passwordGateCamera.updateProjectionMatrix();
+    passwordGateRenderer.setSize(nextWidth, nextHeight);
+    framePasswordGateCamera();
+    passwordGateRenderer.render(passwordGateScene, passwordGateCamera);
+  };
+
+  passwordGateVisibilityHandler = () => {
+    if (document.hidden) {
+      stopPasswordGateCake();
+      return;
+    }
+
+    startPasswordGateSceneInterval();
+    startPasswordGateAnimation();
+  };
+
+  window.addEventListener("resize", passwordGateResizeHandler);
+  document.addEventListener("visibilitychange", passwordGateVisibilityHandler);
+
+  if (!passwordGateLockObserver) {
+    passwordGateLockObserver = new MutationObserver(() => {
+      if (document.body.classList.contains("password-gate-locked")) return;
+      stopPasswordGateCake();
+    });
+
+    passwordGateLockObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class"]
+    });
+  }
 }
 
 function getCustomizerVisualHTML(recommendation) {
@@ -2262,6 +2957,11 @@ let scene, camera, renderer, loader, controls;
 let cakeObjects = [];
 let cakeSceneRoot = null;
 let cakeAnimationFrame = null;
+let edibleImageMesh = null;
+let edibleImageTexture = null;
+let edibleImageTextureKey = "";
+let edibleImageSourceImage = null;
+let edibleImageDragState = null;
 let customizerTierSelect = null;
 let customizerPreviewSelections = [];
 let activeCustomizerTierIndex = null;
@@ -2272,6 +2972,7 @@ let customizerKeyHandler = null;
 const shellBorderModelCache = new Map();
 let swirlModelPromise = null;
 let cherryModelPromise = null;
+let swagModelPromise = null;
 let cameraViewGizmo = null;
 let cameraViewButtons = [];
 let activeCameraView = "front";
@@ -2772,6 +3473,7 @@ async function initCakeBuilder3D(recommendation, builderParts = null, { showCame
   const container = document.getElementById("cake-builder-3d");
 
   container.innerHTML = "";
+  disposeEdibleImagePreview();
   cakeObjects = [];
   cameraViewGizmo = null;
   cameraViewButtons = [];
@@ -2840,6 +3542,7 @@ async function initCakeBuilder3D(recommendation, builderParts = null, { showCame
 
   const parts = builderParts || getRecommendationParts(recommendation);
   await buildCake3D(parts);
+  await syncEdibleImagePreview();
   attachCakePicker();
 
   animate();
@@ -3273,7 +3976,9 @@ function animate() {
   updateCameraViewGizmoOrientation();
   enforceCupcakeEditModelVisibility();
   renderer.render(scene, camera);
-  syncFinishedOrderHitTargets();
+  if (typeof syncFinishedOrderHitTargets === "function") {
+    syncFinishedOrderHitTargets();
+  }
 }
 
 function snapCakeObjectsToTargets() {
@@ -3314,7 +4019,7 @@ function applyAllCustomizerSelectionColors() {
     if (!selection) return;
 
     applyTierColorsToObject(entry.object, selection);
-    applyOuterFrostingColor(entry.outerFrostingObject, selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR);
+    applyOuterFrostingFinish(entry.outerFrostingObject, selection);
   });
 }
 
@@ -3419,16 +4124,70 @@ function attachCakePicker() {
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   let pointerDown = null;
+  const topPlane = new THREE.Plane();
+  const topPoint = new THREE.Vector3();
+
+  function setPointerFromEvent(event) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+  }
+
+  function updateEdibleImageDrag(event) {
+    if (!edibleImageDragState) return false;
+    const { entry, selection } = edibleImageDragState;
+    setPointerFromEvent(event);
+    entry.object.updateWorldMatrix(true, true);
+    const topWorld = entry.object.localToWorld(new THREE.Vector3(0, getEdibleImageLocalTopY(entry) + EDIBLE_IMAGE_TOP_OFFSET, 0));
+    topPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), topWorld);
+    if (!raycaster.ray.intersectPlane(topPlane, topPoint)) return true;
+
+    const localPoint = entry.object.worldToLocal(topPoint.clone());
+    selection.edibleImageX = localPoint.x;
+    selection.edibleImageY = localPoint.z;
+    applyEdibleImageTransform(selection, entry);
+    syncEdibleImageControls(activeTierIndex);
+    persistCustomizerState();
+    return true;
+  }
 
   renderer.domElement.addEventListener("pointerdown", (event) => {
+    if (edibleImageMesh?.visible) {
+      setPointerFromEvent(event);
+      const edibleIntersections = raycaster.intersectObject(edibleImageMesh, true);
+      const entry = getTopMainCakeEntry();
+      const selectionIndex = getEdibleImageSelectionIndex();
+      const selection = selectionIndex !== null ? selections[selectionIndex] : null;
+      if (edibleIntersections.length && entry && selection?.edibleImage) {
+        edibleImageDragState = { entry, selection };
+        renderer.domElement.setPointerCapture?.(event.pointerId);
+        renderer.domElement.style.cursor = "grabbing";
+        event.preventDefault();
+        return;
+      }
+    }
     pointerDown = { x: event.clientX, y: event.clientY };
   });
 
+  renderer.domElement.addEventListener("pointermove", (event) => {
+    updateEdibleImageDrag(event);
+  });
+
   renderer.domElement.addEventListener("pointerleave", () => {
+    edibleImageDragState = null;
     pointerDown = null;
+    if (renderer?.domElement) renderer.domElement.style.cursor = "pointer";
   });
 
   renderer.domElement.addEventListener("pointerup", (event) => {
+    if (edibleImageDragState) {
+      updateEdibleImageDrag(event);
+      edibleImageDragState = null;
+      renderer.domElement.releasePointerCapture?.(event.pointerId);
+      renderer.domElement.style.cursor = "pointer";
+      return;
+    }
     if (!customizerTierSelect || !cakeObjects.length) return;
     const isFulfillmentStep = document.getElementById("customizer-layout")?.classList.contains("is-fulfillment-step");
     if (pointerDown) {
@@ -3438,11 +4197,7 @@ function attachCakePicker() {
       if (Math.hypot(deltaX, deltaY) > 5) return;
     }
 
-    const rect = renderer.domElement.getBoundingClientRect();
-    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycaster.setFromCamera(pointer, camera);
+    setPointerFromEvent(event);
 
     const meshes = cakeObjects.flatMap(({ object, outerFrostingObject }) => {
       if (!object.visible) return [];
@@ -3520,6 +4275,17 @@ async function loadCherryModel(cherryLoader = loader) {
   return cherryModelPromise;
 }
 
+async function loadSwagModel(swagLoader = loader) {
+  if (!swagModelPromise) {
+    const loaderToUse = swagLoader || new GLTFLoader();
+    swagModelPromise = new Promise((resolve, reject) => {
+      loaderToUse.load(SWAG_MODEL_SRC, (gltf) => resolve(gltf.scene), undefined, reject);
+    });
+  }
+
+  return swagModelPromise;
+}
+
 function applyShellBorderMaterial(object, color = DEFAULT_SHELL_FROSTING_COLOR) {
   object.traverse((child) => {
     if (!child.isMesh || !child.material) return;
@@ -3545,15 +4311,6 @@ function applyShellBorderMaterial(object, color = DEFAULT_SHELL_FROSTING_COLOR) 
       material.metalness = 0;
     });
   });
-}
-
-function orientShellAnchorAlongPerimeter(anchor, outward, tangent, rotationOffset = 0) {
-  const up = new THREE.Vector3(0, 1, 0);
-  const rotationMatrix = new THREE.Matrix4().makeBasis(tangent, up, outward);
-  anchor.setRotationFromMatrix(rotationMatrix);
-  if (rotationOffset) {
-    anchor.rotateY(rotationOffset);
-  }
 }
 
 function prepareDecorModelMaterials(object) {
@@ -3588,24 +4345,16 @@ async function createShellBorder(radius, y, count, options = {}) {
 
   for (let i = 0; i < count; i += 1) {
     const angle = (i / count) * Math.PI * 2;
-    const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
-    const tangent = new THREE.Vector3(-Math.sin(angle), 0, Math.cos(angle));
-    const anchor = new THREE.Group();
+    const x = Math.cos(angle) * (radius + radialOffset);
+    const z = Math.sin(angle) * (radius + radialOffset);
     const shell = template.clone(true);
 
-    anchor.position.set(
-      outward.x * (radius + radialOffset),
-      y,
-      outward.z * (radius + radialOffset)
-    );
-    orientShellAnchorAlongPerimeter(anchor, outward, tangent, rotationOffset);
-
-    shell.position.set(0, 0, 0);
+    shell.position.set(x, y, z);
+    shell.rotation.y = -angle + Math.PI / 2 + rotationOffset;
     shell.scale.set(shellScale * overlap, shellScale * 1.08, shellScale * 1.12);
 
     applyShellBorderMaterial(shell, color);
-    anchor.add(shell);
-    border.add(anchor);
+    border.add(shell);
   }
 
   border.userData.isShellBorder = true;
@@ -3650,6 +4399,43 @@ function getSwirlScaleForTier(template, radius, count) {
   return Math.max(0.035, Math.min(tangentScale, radialScale, 0.16));
 }
 
+function getSwagCountForTier(entry) {
+  const size = Number(entry?.size) || 8;
+  if (size <= 6) return 4;
+  if (size <= 8) return 6;
+  if (size <= 10) return 8;
+  return 12;
+}
+
+function getSwagScaleForTier(template, radius, swagCount) {
+  const footprint = getShellBaseFootprint(template);
+  const arcLength = (Math.PI * 2 * radius) / swagCount;
+  const compressedArcLength = arcLength * SWAG_HORIZONTAL_COMPRESSION;
+  const targetPieceWidth = (compressedArcLength / Math.max(SWAG_PIECES_PER_DRAPE - 1, 1)) * 1.55;
+  const tangentScale = targetPieceWidth / footprint.tangent;
+  const radialScale = (radius * 0.14) / footprint.radial;
+
+  return Math.max(SWAG_MIN_SCALE, Math.min(tangentScale, radialScale, SWAG_MAX_SCALE));
+}
+
+function getSwagShellTrimScaleForTier(template, radius, swagCount) {
+  const footprint = getShellBaseFootprint(template);
+  const arcLength = (Math.PI * 2 * radius * SWAG_HORIZONTAL_COMPRESSION) / swagCount;
+  const targetPieceWidth = (arcLength / Math.max(SWAG_SHELL_TRIM_PIECES_PER_DRAPE - 1, 1)) * 1.05;
+  const tangentScale = targetPieceWidth / footprint.tangent;
+  const radialScale = (radius * 0.055) / footprint.radial;
+
+  return Math.max(SWAG_SHELL_TRIM_MIN_SCALE, Math.min(tangentScale, radialScale, SWAG_SHELL_TRIM_MAX_SCALE));
+}
+
+function getSwagSidewallQuaternion(outward) {
+  const up = new THREE.Vector3(0, 1, 0);
+  const tangent = new THREE.Vector3().crossVectors(up, outward).normalize();
+  const down = up.clone().negate();
+  const basis = new THREE.Matrix4().makeBasis(tangent, outward, down);
+  return new THREE.Quaternion().setFromRotationMatrix(basis);
+}
+
 function getObjectSize(template) {
   const box = new THREE.Box3().setFromObject(template);
   const size = new THREE.Vector3();
@@ -3670,6 +4456,68 @@ function getCherryScaleForSwirl(cherryTemplate, swirlTemplate, swirlScale) {
 function normalizeSwirlCount(count) {
   const numericCount = Number(count);
   return SWIRL_ALLOWED_COUNTS.includes(numericCount) ? numericCount : DEFAULT_SWIRL_COUNT;
+}
+
+function normalizeDecorationList(selection = {}) {
+  const source = Array.isArray(selection.decorations) && selection.decorations.length
+    ? selection.decorations
+    : selection.decor
+      ? [selection.decor]
+      : [];
+  const decorations = [...new Set(source)].filter((decor) => DECORATION_LAYER_TYPES.includes(decor));
+  if (selection.cherries === true && !decorations.includes(CHERRY_DECOR)) {
+    decorations.push(CHERRY_DECOR);
+  }
+  return DECORATION_LAYER_TYPES.filter((decorType) => decorations.includes(decorType));
+}
+
+function normalizeShellBorderEdges(selection = {}) {
+  const source = Array.isArray(selection.shellBorderEdges) && selection.shellBorderEdges.length
+    ? selection.shellBorderEdges
+    : [selection.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE];
+  const edges = [...new Set(source)].filter((edge) => SHELL_BORDER_EDGES.includes(edge));
+  return edges.length ? edges : [SHELL_BORDER_DEFAULT_EDGE];
+}
+
+function isDecorationActive(selection, decorType) {
+  return normalizeDecorationList(selection).includes(decorType);
+}
+
+function setDecorationActive(selection, decorType, isActive) {
+  if (!selection || !DECORATION_LAYER_TYPES.includes(decorType)) return [];
+  const decorations = normalizeDecorationList(selection);
+  let nextDecorations = isActive
+    ? [...new Set([...decorations, decorType])]
+    : decorations.filter((decor) => decor !== decorType);
+
+  if (decorType === SWIRL_DECOR && !isActive) {
+    selection.cherries = false;
+    nextDecorations = nextDecorations.filter((decor) => decor !== CHERRY_DECOR);
+  }
+  if (decorType === CHERRY_DECOR) {
+    selection.cherries = isActive;
+    if (isActive && !nextDecorations.includes(SWIRL_DECOR)) {
+      nextDecorations.push(SWIRL_DECOR);
+    }
+  }
+
+  nextDecorations = DECORATION_LAYER_TYPES.filter((decorType) => nextDecorations.includes(decorType));
+  selection.decorations = nextDecorations;
+  selection.decor = nextDecorations[0] || "";
+  return nextDecorations;
+}
+
+function toggleDecoration(selection, decorType) {
+  return setDecorationActive(selection, decorType, !isDecorationActive(selection, decorType));
+}
+
+function getDecorationLabel(decorType) {
+  if (decorType === SHELL_BORDER_DECOR) return "Shell border";
+  if (decorType === SWAG_DECOR) return "Swags";
+  if (decorType === SHELL_SWAG_DECOR) return "Shell swag";
+  if (decorType === SWIRL_DECOR) return "Swirls";
+  if (decorType === CHERRY_DECOR) return "Cherries";
+  return decorType;
 }
 
 function getTierLocalEdgeY(entry, edge = SHELL_BORDER_DEFAULT_EDGE) {
@@ -3702,6 +4550,25 @@ function ensureDecorGroup(entry) {
   return entry.decorGroup;
 }
 
+function ensureDecorLayer(entry, layerName) {
+  const decorGroup = ensureDecorGroup(entry);
+  if (!decorGroup) return null;
+
+  if (!entry.decorLayers) {
+    entry.decorLayers = {};
+  }
+  if (!entry.decorLayers[layerName] || entry.decorLayers[layerName].parent !== decorGroup) {
+    entry.decorLayers[layerName] = new THREE.Group();
+    entry.decorLayers[layerName].name = `decorLayer-${layerName}-${entry.partIndex}`;
+    entry.decorLayers[layerName].userData.isDecorLayer = true;
+    entry.decorLayers[layerName].userData.decorLayer = layerName;
+    entry.decorLayers[layerName].userData.partIndex = entry.partIndex;
+    decorGroup.add(entry.decorLayers[layerName]);
+  }
+
+  return entry.decorLayers[layerName];
+}
+
 function disposeDecorMaterialOnly(root) {
   root?.traverse?.((child) => {
     const materials = Array.isArray(child.material) ? child.material : [child.material];
@@ -3709,10 +4576,25 @@ function disposeDecorMaterialOnly(root) {
   });
 }
 
+function clearDecorLayer(entry, layerName) {
+  const layer = entry?.decorLayers?.[layerName];
+  if (!layer) return;
+
+  while (layer.children.length) {
+    const child = layer.children[0];
+    layer.remove(child);
+    disposeDecorMaterialOnly(child);
+  }
+}
+
 function clearDecorGroup(target) {
   const entry = target?.isGroup ? null : resolveCakeEntryForTier(target);
   const decorGroup = target?.isGroup ? target : entry?.decorGroup;
   if (!decorGroup) return;
+
+  if (entry && edibleImageMesh && decorGroup.getObjectById(edibleImageMesh.id)) {
+    disposeEdibleImagePreview();
+  }
 
   while (decorGroup.children.length) {
     const child = decorGroup.children[0];
@@ -3722,84 +4604,86 @@ function clearDecorGroup(target) {
 
   if (entry) {
     entry.decorType = "";
+    entry.decorLayers = {};
   }
 }
 
-async function addShellBorderToTier(tier, edge = null) {
+async function addShellBorderToTier(tier, edges = null) {
   const entry = resolveCakeEntryForTier(tier);
   if (!entry?.size) return null;
 
-  const syncId = (entry.decorSyncId || 0) + 1;
-  entry.decorSyncId = syncId;
-  clearDecorGroup(entry);
+  const syncId = (entry.shellBorderSyncId || 0) + 1;
+  entry.shellBorderSyncId = syncId;
+  clearDecorLayer(entry, SHELL_BORDER_DECOR);
 
   const template = await loadShellModel();
-  if (entry.decorSyncId !== syncId) return null;
+  if (entry.shellBorderSyncId !== syncId) return null;
 
-  const decorGroup = ensureDecorGroup(entry);
-  clearDecorGroup(decorGroup);
+  const decorLayer = ensureDecorLayer(entry, SHELL_BORDER_DECOR);
+  clearDecorLayer(entry, SHELL_BORDER_DECOR);
 
   const radius = entry.tierRadius || 0.24;
-  const shellEdge = edge || customizerPreviewSelections[entry.partIndex]?.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE;
-  const y = getTierLocalEdgeY(entry, shellEdge);
+  const selectedEdges = Array.isArray(edges)
+    ? normalizeShellBorderEdges({ shellBorderEdges: edges })
+    : normalizeShellBorderEdges(customizerPreviewSelections[entry.partIndex]);
+  const selection = customizerPreviewSelections[entry.partIndex] || {};
+  const shellBorderColor = selection.shellBorderColor || DEFAULT_SHELL_FROSTING_COLOR;
   const count = getShellCountForTier(entry, radius);
   const scale = getShellScaleForCount(template, radius, count);
 
-  for (let i = 0; i < count; i += 1) {
-    const angle = (i / count) * Math.PI * 2;
-    const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
-    const tangent = new THREE.Vector3(-Math.sin(angle), 0, Math.cos(angle));
-    const anchor = new THREE.Group();
-    const shell = template.clone(true);
+  selectedEdges.forEach((shellEdge) => {
+    const y = getTierLocalEdgeY(entry, shellEdge);
+    const radialOffset = shellEdge === "bottom" ? 0.004 : 0.002;
 
-    anchor.position.set(outward.x * radius, y, outward.z * radius);
-    orientShellAnchorAlongPerimeter(anchor, outward, tangent);
-    anchor.userData.isShellBorder = true;
-    anchor.userData.partIndex = entry.partIndex;
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2;
+      const x = Math.cos(angle) * (radius + radialOffset);
+      const z = Math.sin(angle) * (radius + radialOffset);
+      const shell = template.clone(true);
 
-    shell.position.set(0, 0, 0);
-    shell.scale.set(scale * SHELL_BORDER_OVERLAP, scale * 1.08, scale * 1.12);
-    shell.userData.isShellBorder = true;
-    shell.userData.partIndex = entry.partIndex;
-    shell.traverse((child) => {
-      child.userData.partIndex = entry.partIndex;
-      child.userData.isShellBorder = true;
-    });
+      shell.position.set(x, y, z);
+      shell.rotation.y = -angle + Math.PI / 2;
+      shell.scale.set(scale * SHELL_BORDER_OVERLAP, scale * 1.08, scale * 1.12);
+      shell.userData.isShellBorder = true;
+      shell.userData.shellBorderEdge = shellEdge;
+      shell.userData.partIndex = entry.partIndex;
+      shell.traverse((child) => {
+        child.userData.partIndex = entry.partIndex;
+        child.userData.isShellBorder = true;
+        child.userData.shellBorderEdge = shellEdge;
+      });
 
-    applyShellBorderMaterial(shell);
-    anchor.add(shell);
-    decorGroup.add(anchor);
-  }
+      applyShellBorderMaterial(shell, shellBorderColor);
+      decorLayer.add(shell);
+    }
+  });
 
-  entry.decorType = SHELL_BORDER_DECOR;
-  entry.shellBorderEdge = shellEdge;
-  return decorGroup;
+  entry.decorType = normalizeDecorationList(customizerPreviewSelections[entry.partIndex]).join(",");
+  entry.shellBorderEdges = selectedEdges;
+  entry.shellBorderEdge = selectedEdges[0] || SHELL_BORDER_DEFAULT_EDGE;
+  return decorLayer;
 }
 
 async function addSwirlsToTier(tier, count = DEFAULT_SWIRL_COUNT) {
   const entry = resolveCakeEntryForTier(tier);
   if (!entry?.size) return null;
 
-  const syncId = (entry.decorSyncId || 0) + 1;
-  entry.decorSyncId = syncId;
-  clearDecorGroup(entry);
+  const syncId = (entry.swirlSyncId || 0) + 1;
+  entry.swirlSyncId = syncId;
+  clearDecorLayer(entry, SWIRL_DECOR);
 
   const template = await loadSwirlModel();
-  if (entry.decorSyncId !== syncId) return null;
+  if (entry.swirlSyncId !== syncId) return null;
 
   const selection = customizerPreviewSelections[entry.partIndex];
-  const shouldAddCherries = selection?.cherries === true;
-  const cherryTemplate = shouldAddCherries ? await loadCherryModel() : null;
-  if (entry.decorSyncId !== syncId) return null;
-
-  const decorGroup = ensureDecorGroup(entry);
-  clearDecorGroup(decorGroup);
+  const swirlColor = selection?.swirlColor || DEFAULT_SHELL_FROSTING_COLOR;
+  const decorLayer = ensureDecorLayer(entry, SWIRL_DECOR);
+  clearDecorLayer(entry, SWIRL_DECOR);
 
   const radius = (entry.tierRadius || 0.24) + SWIRL_RADIUS_OFFSET;
   const y = getTierLocalEdgeY(entry, "top") + SWIRL_TOP_Y_OFFSET;
   const swirlCount = normalizeSwirlCount(count);
   const scale = getSwirlScaleForTier(template, radius, swirlCount);
-  const cherryScale = cherryTemplate ? getCherryScaleForSwirl(cherryTemplate, template, scale) : 1;
 
   for (let i = 0; i < swirlCount; i += 1) {
     const angle = (i / swirlCount) * Math.PI * 2;
@@ -3813,33 +4697,183 @@ async function addSwirlsToTier(tier, count = DEFAULT_SWIRL_COUNT) {
     swirl.userData.isSwirlDecor = true;
     swirl.userData.partIndex = entry.partIndex;
 
-    applyShellBorderMaterial(swirl);
-    decorGroup.add(swirl);
+    applyShellBorderMaterial(swirl, swirlColor);
+    decorLayer.add(swirl);
+  }
 
-    if (cherryTemplate) {
-      const cherry = cherryTemplate.clone(true);
-      const cherryRadius = radius + CHERRY_RADIUS_OFFSET;
+  entry.decorType = normalizeDecorationList(selection).join(",");
+  entry.swirlCount = swirlCount;
+  return decorLayer;
+}
 
-      cherry.position.set(
-        outward.x * cherryRadius,
-        y + CHERRY_TOP_Y_OFFSET,
-        outward.z * cherryRadius
-      );
-      cherry.lookAt(outward.x * (cherryRadius + 1), y + CHERRY_TOP_Y_OFFSET, outward.z * (cherryRadius + 1));
-      cherry.rotateY(Math.PI);
-      cherry.scale.setScalar(cherryScale);
-      cherry.userData.isCherryDecor = true;
-      cherry.userData.partIndex = entry.partIndex;
+async function addCherriesToTier(tier, count = DEFAULT_SWIRL_COUNT) {
+  const entry = resolveCakeEntryForTier(tier);
+  if (!entry?.size) return null;
 
-      prepareDecorModelMaterials(cherry);
-      decorGroup.add(cherry);
+  const syncId = (entry.cherrySyncId || 0) + 1;
+  entry.cherrySyncId = syncId;
+  clearDecorLayer(entry, CHERRY_DECOR);
+
+  const swirlTemplate = await loadSwirlModel();
+  const cherryTemplate = await loadCherryModel();
+  if (entry.cherrySyncId !== syncId) return null;
+
+  const selection = customizerPreviewSelections[entry.partIndex];
+  const decorLayer = ensureDecorLayer(entry, CHERRY_DECOR);
+  clearDecorLayer(entry, CHERRY_DECOR);
+
+  const radius = (entry.tierRadius || 0.24) + SWIRL_RADIUS_OFFSET;
+  const y = getTierLocalEdgeY(entry, "top") + SWIRL_TOP_Y_OFFSET;
+  const swirlCount = normalizeSwirlCount(count);
+  const swirlScale = getSwirlScaleForTier(swirlTemplate, radius, swirlCount);
+  const cherryScale = getCherryScaleForSwirl(cherryTemplate, swirlTemplate, swirlScale);
+
+  for (let i = 0; i < swirlCount; i += 1) {
+    const angle = (i / swirlCount) * Math.PI * 2;
+    const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+    const cherry = cherryTemplate.clone(true);
+    const cherryRadius = radius + CHERRY_RADIUS_OFFSET;
+
+    cherry.position.set(
+      outward.x * cherryRadius,
+      y + CHERRY_TOP_Y_OFFSET,
+      outward.z * cherryRadius
+    );
+    cherry.lookAt(outward.x * (cherryRadius + 1), y + CHERRY_TOP_Y_OFFSET, outward.z * (cherryRadius + 1));
+    cherry.rotateY(Math.PI);
+    cherry.scale.setScalar(cherryScale);
+    cherry.userData.isCherryDecor = true;
+    cherry.userData.partIndex = entry.partIndex;
+
+    prepareDecorModelMaterials(cherry);
+    decorLayer.add(cherry);
+  }
+
+  entry.decorType = normalizeDecorationList(selection).join(",");
+  entry.cherries = true;
+  return decorLayer;
+}
+
+async function addSwagsToTier(tier) {
+  const entry = resolveCakeEntryForTier(tier);
+  if (!entry?.size) return null;
+
+  const syncId = (entry.swagSyncId || 0) + 1;
+  entry.swagSyncId = syncId;
+  clearDecorLayer(entry, SWAG_DECOR);
+
+  const template = await loadSwagModel();
+  if (entry.swagSyncId !== syncId) return null;
+
+  const decorLayer = ensureDecorLayer(entry, SWAG_DECOR);
+  clearDecorLayer(entry, SWAG_DECOR);
+
+  const radius = (entry.tierRadius || 0.24) + SWAG_SURFACE_OFFSET;
+  const swagCount = getSwagCountForTier(entry);
+  const segmentAngle = (Math.PI * 2) / swagCount;
+  const baseY = getTierLocalEdgeY(entry, "bottom") - SHELL_BORDER_BOTTOM_Y_OFFSET;
+  const tierHeight = entry.tierHeight || 0.24;
+  const anchorY = baseY + tierHeight * SWAG_ANCHOR_HEIGHT_RATIO;
+  const drop = Math.max(tierHeight * SWAG_DROP_HEIGHT_RATIO, 0.025);
+  const scale = getSwagScaleForTier(template, radius, swagCount);
+  const selection = customizerPreviewSelections[entry.partIndex] || {};
+  const swagColor = selection.swagColor || DEFAULT_SHELL_FROSTING_COLOR;
+
+  for (let swagIndex = 0; swagIndex < swagCount; swagIndex += 1) {
+    const startAngle = (swagIndex / swagCount) * Math.PI * 2;
+    const compressedStartAngle = startAngle + segmentAngle * ((1 - SWAG_HORIZONTAL_COMPRESSION) / 2);
+
+    for (let pieceIndex = 0; pieceIndex < SWAG_PIECES_PER_DRAPE; pieceIndex += 1) {
+      const t = SWAG_PIECES_PER_DRAPE === 1 ? 0.5 : pieceIndex / (SWAG_PIECES_PER_DRAPE - 1);
+      const angle = compressedStartAngle + t * segmentAngle * SWAG_HORIZONTAL_COMPRESSION;
+      const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+      const centerWeight = Math.sin(Math.PI * t);
+      const centerCurve = Math.pow(centerWeight, 1.45);
+      const y = anchorY - centerWeight * drop + centerCurve * tierHeight * SWAG_CENTER_LIFT_HEIGHT_RATIO;
+      const pieceScale = scale * (0.58 + centerCurve * 0.54);
+      const curveSlope = -Math.cos(Math.PI * t) * drop / Math.max(segmentAngle * radius * SWAG_HORIZONTAL_COMPRESSION, 0.001);
+      const swag = template.clone(true);
+
+      swag.position.set(outward.x * radius, y, outward.z * radius);
+      swag.quaternion.copy(getSwagSidewallQuaternion(outward));
+      swag.rotateY(Math.atan(curveSlope) * SWAG_CURVE_ROTATION_STRENGTH);
+      swag.scale.set(pieceScale, pieceScale * (0.54 + centerCurve * 0.1), pieceScale);
+      swag.userData.isSwagDecor = true;
+      swag.userData.partIndex = entry.partIndex;
+      swag.traverse((child) => {
+        child.userData.partIndex = entry.partIndex;
+        child.userData.isSwagDecor = true;
+      });
+
+      applyShellBorderMaterial(swag, swagColor);
+      decorLayer.add(swag);
     }
   }
 
-  entry.decorType = SWIRL_DECOR;
-  entry.swirlCount = swirlCount;
-  entry.cherries = shouldAddCherries;
-  return decorGroup;
+  entry.decorType = normalizeDecorationList(selection).join(",");
+  entry.swagCount = swagCount;
+  return decorLayer;
+}
+
+async function addShellSwagToTier(tier) {
+  const entry = resolveCakeEntryForTier(tier);
+  if (!entry?.size) return null;
+
+  const syncId = (entry.shellSwagSyncId || 0) + 1;
+  entry.shellSwagSyncId = syncId;
+  clearDecorLayer(entry, SHELL_SWAG_DECOR);
+
+  const shellTemplate = await loadShellModel();
+  if (entry.shellSwagSyncId !== syncId) return null;
+
+  const decorLayer = ensureDecorLayer(entry, SHELL_SWAG_DECOR);
+  clearDecorLayer(entry, SHELL_SWAG_DECOR);
+
+  const trimRadius = (entry.tierRadius || 0.24) + SWAG_SURFACE_OFFSET + SWAG_SHELL_TRIM_RADIAL_OFFSET;
+  const swagCount = getSwagCountForTier(entry);
+  const segmentAngle = (Math.PI * 2) / swagCount;
+  const baseY = getTierLocalEdgeY(entry, "bottom") - SHELL_BORDER_BOTTOM_Y_OFFSET;
+  const tierHeight = entry.tierHeight || 0.24;
+  const anchorY = baseY + tierHeight * SWAG_ANCHOR_HEIGHT_RATIO;
+  const fullDrop = Math.max(tierHeight * SWAG_DROP_HEIGHT_RATIO, 0.025);
+  const trimDrop = fullDrop * SWAG_SHELL_TRIM_DROP_RATIO;
+  const trimYOffset = tierHeight * SWAG_SHELL_TRIM_Y_OFFSET_RATIO;
+  const trimScale = getSwagShellTrimScaleForTier(shellTemplate, trimRadius, swagCount);
+  const selection = customizerPreviewSelections[entry.partIndex] || {};
+  const shellSwagColor = selection.shellSwagColor || DEFAULT_SHELL_FROSTING_COLOR;
+
+  for (let swagIndex = 0; swagIndex < swagCount; swagIndex += 1) {
+    const startAngle = (swagIndex / swagCount) * Math.PI * 2;
+    const compressedStartAngle = startAngle + segmentAngle * ((1 - SWAG_HORIZONTAL_COMPRESSION) / 2);
+
+    for (let pieceIndex = 0; pieceIndex < SWAG_SHELL_TRIM_PIECES_PER_DRAPE; pieceIndex += 1) {
+      const t = SWAG_SHELL_TRIM_PIECES_PER_DRAPE === 1 ? 0.5 : pieceIndex / (SWAG_SHELL_TRIM_PIECES_PER_DRAPE - 1);
+      const angle = compressedStartAngle + t * segmentAngle * SWAG_HORIZONTAL_COMPRESSION;
+      const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+      const centerWeight = Math.sin(Math.PI * t);
+      const y = anchorY - centerWeight * trimDrop + trimYOffset;
+      const curveSlope = -Math.cos(Math.PI * t) * trimDrop / Math.max(segmentAngle * trimRadius * SWAG_HORIZONTAL_COMPRESSION, 0.001);
+      const shell = shellTemplate.clone(true);
+
+      shell.position.set(outward.x * trimRadius, y, outward.z * trimRadius);
+      shell.quaternion.copy(getSwagSidewallQuaternion(outward));
+      shell.rotateY(Math.atan(curveSlope) * SWAG_CURVE_ROTATION_STRENGTH);
+      shell.scale.set(trimScale * 1.08, trimScale * 0.82, trimScale);
+      shell.userData.isShellSwagDecor = true;
+      shell.userData.partIndex = entry.partIndex;
+      shell.traverse((child) => {
+        child.userData.partIndex = entry.partIndex;
+        child.userData.isShellSwagDecor = true;
+      });
+
+      applyShellBorderMaterial(shell, shellSwagColor);
+      decorLayer.add(shell);
+    }
+  }
+
+  entry.decorType = normalizeDecorationList(selection).join(",");
+  entry.shellSwagCount = swagCount;
+  return decorLayer;
 }
 
 function clearCupcakeSwirls(entry) {
@@ -3903,18 +4937,39 @@ async function syncDecorForIndex(index) {
   const selection = customizerPreviewSelections[index];
   if (!entry || !selection) return;
 
-  if (selection.decor === SHELL_BORDER_DECOR) {
-    await addShellBorderToTier(entry, selection.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE);
-    return;
+  const activeDecorations = normalizeDecorationList(selection);
+
+  if (activeDecorations.includes(SHELL_BORDER_DECOR)) {
+    await addShellBorderToTier(entry, normalizeShellBorderEdges(selection));
+  } else {
+    clearDecorLayer(entry, SHELL_BORDER_DECOR);
   }
 
-  if (selection.decor === SWIRL_DECOR) {
+  if (activeDecorations.includes(SWAG_DECOR)) {
+    await addSwagsToTier(entry);
+  } else {
+    clearDecorLayer(entry, SWAG_DECOR);
+  }
+
+  if (activeDecorations.includes(SHELL_SWAG_DECOR)) {
+    await addShellSwagToTier(entry);
+  } else {
+    clearDecorLayer(entry, SHELL_SWAG_DECOR);
+  }
+
+  if (activeDecorations.includes(SWIRL_DECOR)) {
     await addSwirlsToTier(entry, selection.swirlCount || DEFAULT_SWIRL_COUNT);
-    return;
+  } else {
+    clearDecorLayer(entry, SWIRL_DECOR);
   }
 
-  entry.decorSyncId = (entry.decorSyncId || 0) + 1;
-  clearDecorGroup(entry);
+  if (activeDecorations.includes(CHERRY_DECOR)) {
+    await addCherriesToTier(entry, selection.swirlCount || DEFAULT_SWIRL_COUNT);
+  } else {
+    clearDecorLayer(entry, CHERRY_DECOR);
+  }
+
+  entry.decorType = activeDecorations.join(",");
 }
 
 async function toggleShellBorder(index = activeCustomizerTierIndex) {
@@ -3923,7 +4978,8 @@ async function toggleShellBorder(index = activeCustomizerTierIndex) {
 
   const selection = customizerPreviewSelections[index];
   selection.shellBorderEdge = selection.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE;
-  selection.decor = selection.decor === SHELL_BORDER_DECOR ? "" : SHELL_BORDER_DECOR;
+  selection.shellBorderEdges = normalizeShellBorderEdges(selection);
+  toggleDecoration(selection, SHELL_BORDER_DECOR);
   await syncDecorForIndex(index);
 }
 
@@ -3933,13 +4989,13 @@ async function toggleSwirls(index = activeCustomizerTierIndex) {
 
   const selection = customizerPreviewSelections[index];
   selection.swirlCount = normalizeSwirlCount(selection.swirlCount);
-  selection.decor = selection.decor === SWIRL_DECOR ? "" : SWIRL_DECOR;
+  toggleDecoration(selection, SWIRL_DECOR);
   await syncDecorForIndex(index);
 }
 
 async function updateSwirlDecor(index = activeCustomizerTierIndex) {
   index = typeof index === "number" ? index : null;
-  if (index === null || customizerPreviewSelections[index]?.decor !== SWIRL_DECOR) return;
+  if (index === null || !isDecorationActive(customizerPreviewSelections[index], SWIRL_DECOR)) return;
 
   customizerPreviewSelections[index].swirlCount = normalizeSwirlCount(customizerPreviewSelections[index].swirlCount);
   await syncDecorForIndex(index);
@@ -3951,8 +5007,7 @@ async function toggleCherries(index = activeCustomizerTierIndex) {
 
   const selection = customizerPreviewSelections[index];
   selection.swirlCount = normalizeSwirlCount(selection.swirlCount);
-  selection.decor = SWIRL_DECOR;
-  selection.cherries = !selection.cherries;
+  setDecorationActive(selection, CHERRY_DECOR, !isDecorationActive(selection, CHERRY_DECOR));
   await syncDecorForIndex(index);
 }
 
@@ -3960,7 +5015,11 @@ window.clearDecorGroup = clearDecorGroup;
 window.addShellBorderToTier = addShellBorderToTier;
 window.loadSwirlModel = loadSwirlModel;
 window.loadCherryModel = loadCherryModel;
+window.loadSwagModel = loadSwagModel;
 window.addSwirlsToTier = addSwirlsToTier;
+window.addCherriesToTier = addCherriesToTier;
+window.addSwagsToTier = addSwagsToTier;
+window.addShellSwagToTier = addShellSwagToTier;
 window.updateSwirlDecor = updateSwirlDecor;
 window.toggleShellBorder = toggleShellBorder;
 window.toggleSwirls = toggleSwirls;
@@ -3981,6 +5040,350 @@ function applyOuterFrostingColor(object, color = DEFAULT_OUTER_FROSTING_COLOR) {
       material.metalness = 0;
     });
   });
+}
+
+function disposeStripeTexture(material) {
+  if (material?.userData?.stripeTexture) {
+    material.userData.stripeTexture.dispose();
+    material.userData.stripeTexture = null;
+  }
+}
+
+function getMeshLocalYBounds(mesh) {
+  mesh.geometry?.computeBoundingBox?.();
+  const box = mesh.geometry?.boundingBox;
+  if (!box) {
+    return { minY: 0, maxY: 1 };
+  }
+  if (!Number.isFinite(box.min.y) || !Number.isFinite(box.max.y) || box.max.y <= box.min.y) {
+    return { minY: 0, maxY: 1 };
+  }
+
+  return { minY: box.min.y, maxY: box.max.y };
+}
+
+function clearStripedOuterFrostingMaterial(material, color = DEFAULT_OUTER_FROSTING_COLOR) {
+  disposeStripeTexture(material);
+  material.map = null;
+  material.onBeforeCompile = () => {};
+  material.customProgramCacheKey = () => "outer-frosting-smooth";
+  material.userData.stripeUniforms = null;
+  material.userData.ombreUniforms = null;
+  if (material.color) material.color.set(color);
+  material.needsUpdate = true;
+}
+
+function applyStripedOuterFrostingMaterial(material, {
+  baseColor = DEFAULT_OUTER_FROSTING_COLOR,
+  stripeColor = DEFAULT_STRIPE_FROSTING_COLOR,
+  minY = 0,
+  maxY = 1
+} = {}) {
+  disposeStripeTexture(material);
+  material.map = null;
+  if (material.color) material.color.set("#ffffff");
+
+  const uniforms = material.userData.stripeUniforms || {
+    stripeBaseColor: { value: new THREE.Color(baseColor) },
+    stripeAltColor: { value: new THREE.Color(stripeColor) },
+    stripeMinY: { value: minY },
+    stripeMaxY: { value: maxY },
+    stripeCount: { value: STRIPED_OUTER_FROSTING_STRIPE_COUNT }
+  };
+
+  uniforms.stripeBaseColor.value.set(baseColor);
+  uniforms.stripeAltColor.value.set(stripeColor);
+  uniforms.stripeMinY.value = minY;
+  uniforms.stripeMaxY.value = maxY;
+  uniforms.stripeCount.value = STRIPED_OUTER_FROSTING_STRIPE_COUNT;
+  material.userData.stripeUniforms = uniforms;
+  material.userData.ombreUniforms = null;
+
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+varying float vStripeLocalY;
+varying vec3 vStripeWorldNormal;`
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+vStripeLocalY = transformed.y;
+vStripeWorldNormal = normalize(mat3(modelMatrix) * normal);`
+      );
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+uniform vec3 stripeBaseColor;
+uniform vec3 stripeAltColor;
+uniform float stripeMinY;
+uniform float stripeMaxY;
+uniform float stripeCount;
+varying float vStripeLocalY;
+varying vec3 vStripeWorldNormal;`
+      )
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+float stripeSpan = max(stripeMaxY - stripeMinY, 0.0001);
+float topDown = clamp((stripeMaxY - vStripeLocalY) / stripeSpan, 0.0, 0.9999);
+float stripeIndex = floor(topDown * stripeCount);
+vec3 sideStripeColor = mod(stripeIndex, 2.0) < 1.0 ? stripeAltColor : stripeBaseColor;
+float topCapMix = smoothstep(0.72, 0.92, normalize(vStripeWorldNormal).y);
+diffuseColor.rgb = mix(sideStripeColor, stripeAltColor, topCapMix);`
+      );
+  };
+
+  material.customProgramCacheKey = () => "outer-frosting-striped-seven-local-v1";
+  material.needsUpdate = true;
+}
+
+function applyOmbreOuterFrostingMaterial(material, {
+  baseColor = DEFAULT_OUTER_FROSTING_COLOR,
+  ombreColor = DEFAULT_OMBRE_FROSTING_COLOR,
+  minY = 0,
+  maxY = 1
+} = {}) {
+  disposeStripeTexture(material);
+  material.map = null;
+  if (material.color) material.color.set("#ffffff");
+
+  const uniforms = material.userData.ombreUniforms || {
+    ombreBaseColor: { value: new THREE.Color(baseColor) },
+    ombreAltColor: { value: new THREE.Color(ombreColor) },
+    ombreMinY: { value: minY },
+    ombreMaxY: { value: maxY }
+  };
+
+  uniforms.ombreBaseColor.value.set(baseColor);
+  uniforms.ombreAltColor.value.set(ombreColor);
+  uniforms.ombreMinY.value = minY;
+  uniforms.ombreMaxY.value = maxY;
+  material.userData.ombreUniforms = uniforms;
+  material.userData.stripeUniforms = null;
+
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+varying float vOmbreLocalY;
+varying vec3 vOmbreWorldNormal;`
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+vOmbreLocalY = transformed.y;
+vOmbreWorldNormal = normalize(mat3(modelMatrix) * normal);`
+      );
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+uniform vec3 ombreBaseColor;
+uniform vec3 ombreAltColor;
+uniform float ombreMinY;
+uniform float ombreMaxY;
+varying float vOmbreLocalY;
+varying vec3 vOmbreWorldNormal;`
+      )
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+float ombreSpan = max(ombreMaxY - ombreMinY, 0.0001);
+float ombreTopMix = smoothstep(0.0, 1.0, clamp((vOmbreLocalY - ombreMinY) / ombreSpan, 0.0, 1.0));
+float topCapMix = smoothstep(0.72, 0.92, normalize(vOmbreWorldNormal).y);
+diffuseColor.rgb = mix(mix(ombreAltColor, ombreBaseColor, ombreTopMix), ombreBaseColor, topCapMix);`
+      );
+  };
+
+  material.customProgramCacheKey = () => "outer-frosting-ombre-local-v2";
+  material.needsUpdate = true;
+}
+
+function applyOuterFrostingFinish(object, selection = {}) {
+  if (!object) return;
+
+  const baseColor = selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR;
+  const stripeColor = selection.outerFrostingStripeColor || DEFAULT_STRIPE_FROSTING_COLOR;
+  const ombreColor = selection.outerFrostingOmbreColor || DEFAULT_OMBRE_FROSTING_COLOR;
+  const isStriped = selection.outerFrosting === STRIPED_OUTER_FROSTING_DECOR;
+  const isOmbre = selection.outerFrosting === OMBRE_OUTER_FROSTING_DECOR;
+
+  object.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+    const { minY, maxY } = getMeshLocalYBounds(child);
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      if (isStriped) {
+        applyStripedOuterFrostingMaterial(material, { baseColor, stripeColor, minY, maxY });
+      } else if (isOmbre) {
+        applyOmbreOuterFrostingMaterial(material, { baseColor, ombreColor, minY, maxY });
+      } else {
+        clearStripedOuterFrostingMaterial(material, baseColor);
+      }
+      material.roughness = 0.38;
+      material.metalness = 0;
+      material.needsUpdate = true;
+    });
+  });
+}
+
+function getOuterFrostingLabel(value) {
+  const finishOption = OUTER_FROSTING_FINISH_OPTIONS.find((option) => option.value === value);
+  if (finishOption) return finishOption.label;
+  return value || "";
+}
+
+function isOuterFrostingFinish(value) {
+  return OUTER_FROSTING_FINISH_OPTIONS.some((option) => option.value === value);
+}
+
+async function addDisplayCaseDecor(group, entry, cake, localLoader) {
+  if (cake.decor === SHELL_BORDER_DECOR) {
+    const edge = cake.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE;
+    const count = getShellCountForTier(entry, entry.tierRadius);
+    const y = edge === "bottom"
+      ? SHELL_BORDER_BOTTOM_Y_OFFSET
+      : entry.tierHeight + SHELL_BORDER_TOP_Y_OFFSET;
+    const border = await createShellBorder(entry.tierRadius, y, count, {
+      shellLoader: localLoader,
+      color: DEFAULT_SHELL_FROSTING_COLOR
+    });
+    group.add(border);
+    return;
+  }
+
+  if (cake.decor !== SWIRL_DECOR) return;
+
+  const swirlTemplate = await loadSwirlModel(localLoader);
+  const cherryTemplate = cake.cherries ? await loadCherryModel(localLoader) : null;
+  const swirlCount = normalizeSwirlCount(cake.swirlCount);
+  const radius = entry.tierRadius + SWIRL_RADIUS_OFFSET;
+  const y = entry.tierHeight + SHELL_BORDER_TOP_Y_OFFSET + SWIRL_TOP_Y_OFFSET;
+  const scale = getSwirlScaleForTier(swirlTemplate, radius, swirlCount);
+  const cherryScale = cherryTemplate ? getCherryScaleForSwirl(cherryTemplate, swirlTemplate, scale) : 1;
+
+  for (let i = 0; i < swirlCount; i += 1) {
+    const angle = (i / swirlCount) * Math.PI * 2;
+    const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+    const swirl = swirlTemplate.clone(true);
+
+    swirl.position.set(outward.x * radius, y, outward.z * radius);
+    swirl.lookAt(outward.x * (radius + 1), y, outward.z * (radius + 1));
+    swirl.rotateY(Math.PI);
+    swirl.scale.setScalar(scale);
+    applyShellBorderMaterial(swirl);
+    group.add(swirl);
+
+    if (cherryTemplate) {
+      const cherryRadius = radius + CHERRY_RADIUS_OFFSET;
+      const cherry = cherryTemplate.clone(true);
+      cherry.position.set(
+        outward.x * cherryRadius,
+        y + CHERRY_TOP_Y_OFFSET,
+        outward.z * cherryRadius
+      );
+      cherry.lookAt(outward.x * (cherryRadius + 1), y + CHERRY_TOP_Y_OFFSET, outward.z * (cherryRadius + 1));
+      cherry.rotateY(Math.PI);
+      cherry.scale.setScalar(cherryScale);
+      prepareDecorModelMaterials(cherry);
+      group.add(cherry);
+    }
+  }
+}
+
+async function initDisplayCaseCakePreview(container, cake) {
+  if (!container) return null;
+
+  container.innerHTML = "";
+  const localLoader = new GLTFLoader();
+  const localScene = new THREE.Scene();
+  localScene.background = null;
+
+  const width = container.clientWidth || 160;
+  const height = container.clientHeight || 122;
+  const localCamera = new THREE.PerspectiveCamera(36, width / height, 0.1, 100);
+  localCamera.position.set(0, 0.36, 1.42);
+  localCamera.lookAt(0, 0.18, 0);
+
+  const localRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  localRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  localRenderer.setSize(width, height);
+  container.appendChild(localRenderer.domElement);
+
+  localScene.add(new THREE.AmbientLight(0xffffff, 0.78));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.5);
+  keyLight.position.set(2.8, 4, 3);
+  localScene.add(keyLight);
+  const fillLight = new THREE.DirectionalLight(0xffffff, 0.7);
+  fillLight.position.set(-2.5, 2.2, 2.4);
+  localScene.add(fillLight);
+
+  const group = new THREE.Group();
+  localScene.add(group);
+
+  const tierGltf = await loadCakePartModel(localLoader, { size: cake.size, kind: "main" });
+  const tier = tierGltf.scene;
+  prepareTierMaterials(tier);
+  applyTierColorsToObject(tier, cake);
+  const { height: tierHeight, width: tierWidth } = normalizeCakeModelBounds(tier);
+  group.add(tier);
+
+  const outerSrc = getOuterFrostingModelSrc(cake.size);
+  if (outerSrc) {
+    const outer = await loadModelScene(outerSrc, localLoader);
+    prepareTierMaterials(outer);
+    normalizeCakeModelBounds(outer);
+    group.add(outer);
+    applyOuterFrostingFinish(outer, cake);
+  }
+
+  const entry = {
+    object: tier,
+    tierHeight,
+    tierRadius: tierWidth / 2,
+    size: cake.size,
+    partIndex: 0
+  };
+  await addDisplayCaseDecor(group, entry, cake, localLoader);
+
+  const bounds = new THREE.Box3().setFromObject(group);
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  bounds.getCenter(center);
+  bounds.getSize(size);
+  group.position.sub(center);
+  group.position.y += (bounds.max.y - bounds.min.y) * 0.18;
+  const previewScale = Math.min(3.25, 0.86 / Math.max(size.x, size.y, size.z, 0.001));
+  group.scale.setScalar(previewScale);
+  group.rotation.y = -0.22;
+
+  let disposed = false;
+  function renderPreview() {
+    if (disposed) return;
+    group.rotation.y += 0.0005;
+    localRenderer.render(localScene, localCamera);
+    requestAnimationFrame(renderPreview);
+  }
+  renderPreview();
+
+  return () => {
+    disposed = true;
+    localRenderer.dispose();
+    disposeMenuPreviewObject(group);
+    container.innerHTML = "";
+  };
 }
 
 function removeOuterFrostingForEntry(entry) {
@@ -4010,7 +5413,7 @@ async function syncOuterFrostingForIndex(index) {
   const selection = customizerPreviewSelections[index];
   if (!entry || !selection) return;
 
-  const shouldShowOuterFrosting = selection.outerFrosting === OUTER_FROSTING_DECOR && entry.size;
+  const shouldShowOuterFrosting = OUTER_FROSTING_MESH_FINISHES.includes(selection.outerFrosting) && entry.size;
   if (!shouldShowOuterFrosting) {
     entry.peeking = false;
     removeOuterFrostingForEntry(entry);
@@ -4037,13 +5440,250 @@ async function syncOuterFrostingForIndex(index) {
     positionOuterFrostingForEntry(entry);
     cakeSceneRoot.add(outerFrosting);
     entry.outerFrostingObject = outerFrosting;
-    entry.outerFrostingType = OUTER_FROSTING_DECOR;
+    entry.outerFrostingType = selection.outerFrosting;
   }
 
   positionOuterFrostingForEntry(entry);
-  applyOuterFrostingColor(entry.outerFrostingObject, selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR);
+  entry.outerFrostingType = selection.outerFrosting;
+  applyOuterFrostingFinish(entry.outerFrostingObject, selection);
   entry.outerFrostingObject.visible = !entry.peeking;
   syncPeekToggleForIndex(index);
+}
+
+function disposeEdibleImagePreview() {
+  if (edibleImageMesh?.parent) {
+    edibleImageMesh.parent.remove(edibleImageMesh);
+  }
+  if (edibleImageMesh) {
+    edibleImageMesh.geometry?.dispose?.();
+    if (edibleImageMesh.material?.map) edibleImageMesh.material.map.dispose();
+    edibleImageMesh.material?.dispose?.();
+  }
+  edibleImageMesh = null;
+  edibleImageTexture = null;
+  edibleImageTextureKey = "";
+  edibleImageSourceImage = null;
+  edibleImageDragState = null;
+}
+
+function loadEdibleImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+}
+
+async function createCircularEdibleImageTexture(selection) {
+  const src = selection?.edibleImageDataUrl || "";
+  if (!src) return null;
+
+  if (!edibleImageSourceImage || edibleImageSourceImage.userDataSrc !== src) {
+    edibleImageSourceImage = await loadEdibleImageElement(src);
+    edibleImageSourceImage.userDataSrc = src;
+  }
+
+  const canvasSize = 1024;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasSize;
+  canvas.height = canvasSize;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+
+  const scale = Math.max(0.05, Number(selection.edibleImageScale) || DEFAULT_EDIBLE_IMAGE_SCALE);
+  const imageRadius = Math.max(0.05, Math.min(Number(selection.edibleImageRadius) || DEFAULT_EDIBLE_IMAGE_RADIUS, DEFAULT_EDIBLE_IMAGE_RADIUS));
+  const rotation = THREE.MathUtils.degToRad(Number(selection.edibleImageRotation) || 0);
+  const image = edibleImageSourceImage;
+  const imageCoverScale = Math.max(canvasSize / image.width, canvasSize / image.height) * scale;
+  const imageWidth = image.width * imageCoverScale;
+  const imageHeight = image.height * imageCoverScale;
+  const maskRadius = (canvasSize / 2) * imageRadius;
+
+  context.clearRect(0, 0, canvasSize, canvasSize);
+  context.save();
+  context.beginPath();
+  context.arc(canvasSize / 2, canvasSize / 2, maskRadius, 0, Math.PI * 2);
+  context.clip();
+  context.translate(canvasSize / 2, canvasSize / 2);
+  context.rotate(rotation);
+  context.drawImage(image, -imageWidth / 2, -imageHeight / 2, imageWidth, imageHeight);
+  context.restore();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function getTopMainTierIndex(selectionList = customizerPreviewSelections) {
+  let topIndex = null;
+  let topSize = Infinity;
+
+  selectionList.forEach((selection, index) => {
+    if (selection?.kind !== "main" || !selection.size) return;
+    const size = Number(selection.size);
+    if (size < topSize) {
+      topSize = size;
+      topIndex = index;
+    }
+  });
+
+  return topIndex;
+}
+
+function getTopMainCakeEntry() {
+  const topIndex = getTopMainTierIndex(customizerPreviewSelections);
+  return topIndex === null ? null : cakeObjects.find((entry) => entry.partIndex === topIndex && entry.kind === "main") || null;
+}
+
+function getEdibleImageSelectionIndex() {
+  return getTopMainTierIndex(customizerPreviewSelections);
+}
+
+function clearEdibleImageSettings(selection) {
+  if (!selection) return;
+  Object.assign(selection, getDefaultEdibleImageSettings());
+}
+
+function enforceTopTierEdibleImageOnly() {
+  const topIndex = getTopMainTierIndex(customizerPreviewSelections);
+  customizerPreviewSelections.forEach((selection, index) => {
+    if (index !== topIndex && selection?.edibleImage) {
+      clearEdibleImageSettings(selection);
+    }
+  });
+}
+
+function clampEdibleImagePosition(selection, entry) {
+  if (!selection || !entry) return;
+
+  const radius = Math.max(entry.tierRadius || 0.1, 0.1);
+  const imageRadius = Math.max(0.05, Math.min(Number(selection.edibleImageRadius) || DEFAULT_EDIBLE_IMAGE_RADIUS, DEFAULT_EDIBLE_IMAGE_RADIUS));
+  const imageTopRadius = radius * imageRadius;
+  const safeRadius = Math.max(radius - imageTopRadius, 0);
+  const x = Number(selection.edibleImageX) || 0;
+  const y = Number(selection.edibleImageY) || 0;
+  const distance = Math.hypot(x, y);
+
+  if (distance > safeRadius) {
+    const ratio = safeRadius / distance;
+    selection.edibleImageX = x * ratio;
+    selection.edibleImageY = y * ratio;
+  }
+}
+
+function getEdibleImageLocalTopY(entry) {
+  if (!entry?.object) return entry?.tierHeight || 0.1;
+
+  const previewParent = edibleImageMesh?.parent || null;
+  const previewIndex = previewParent ? previewParent.children.indexOf(edibleImageMesh) : -1;
+  if (previewParent) previewParent.remove(edibleImageMesh);
+
+  entry.object.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(entry.object);
+
+  if (previewParent && edibleImageMesh) {
+    if (previewIndex >= 0 && previewIndex < previewParent.children.length) {
+      previewParent.children.splice(previewIndex, 0, edibleImageMesh);
+      edibleImageMesh.parent = previewParent;
+    } else {
+      previewParent.add(edibleImageMesh);
+    }
+    previewParent.updateWorldMatrix(true, true);
+  }
+
+  if (box.isEmpty()) {
+    return entry.tierHeight || 0.1;
+  }
+
+  const localPoint = entry.object.worldToLocal(new THREE.Vector3(0, box.max.y, 0));
+  return localPoint.y;
+}
+
+function applyEdibleImageTransform(selection, entry) {
+  if (!edibleImageMesh || !selection || !entry) return;
+
+  clampEdibleImagePosition(selection, entry);
+  const radius = entry.tierRadius || 0.24;
+  const diameter = radius * 2;
+  const topY = getEdibleImageLocalTopY(entry);
+
+  edibleImageMesh.scale.set(diameter, diameter, 1);
+  edibleImageMesh.position.set(
+    Number(selection.edibleImageX) || 0,
+    topY + EDIBLE_IMAGE_TOP_OFFSET,
+    Number(selection.edibleImageY) || 0
+  );
+  edibleImageMesh.rotation.set(-Math.PI / 2, 0, 0);
+}
+
+function clearEdibleImageUpload(selection) {
+  if (!selection) return;
+  selection.edibleImage = false;
+  selection.edibleImageFileName = "";
+  selection.edibleImageDataUrl = "";
+  selection.edibleImageScale = DEFAULT_EDIBLE_IMAGE_SCALE;
+  selection.edibleImageRadius = DEFAULT_EDIBLE_IMAGE_RADIUS;
+  selection.edibleImageRotation = DEFAULT_EDIBLE_IMAGE_ROTATION;
+  selection.edibleImageX = DEFAULT_EDIBLE_IMAGE_POSITION.x;
+  selection.edibleImageY = DEFAULT_EDIBLE_IMAGE_POSITION.y;
+}
+
+async function syncEdibleImagePreview() {
+  if (!cakeSceneRoot) return;
+  enforceTopTierEdibleImageOnly();
+
+  const topIndex = getEdibleImageSelectionIndex();
+  const selection = topIndex !== null ? customizerPreviewSelections[topIndex] : null;
+  const entry = getTopMainCakeEntry();
+  if (!selection?.edibleImage || !selection.edibleImageDataUrl || !entry) {
+    disposeEdibleImagePreview();
+    return;
+  }
+
+  const nextTextureKey = [
+    selection.edibleImageDataUrl,
+    Number(selection.edibleImageRadius) || DEFAULT_EDIBLE_IMAGE_RADIUS,
+    Number(selection.edibleImageScale) || DEFAULT_EDIBLE_IMAGE_SCALE,
+    Number(selection.edibleImageRotation) || DEFAULT_EDIBLE_IMAGE_ROTATION
+  ].join("|");
+
+  if (!edibleImageTexture || edibleImageTextureKey !== nextTextureKey) {
+    const nextTexture = await createCircularEdibleImageTexture(selection);
+    if (!nextTexture) return;
+    if (edibleImageTexture) edibleImageTexture.dispose();
+    edibleImageTexture = nextTexture;
+    edibleImageTextureKey = nextTextureKey;
+  }
+
+  if (!edibleImageMesh) {
+    const geometry = new THREE.PlaneGeometry(1, 1);
+    const material = new THREE.MeshBasicMaterial({
+      map: edibleImageTexture,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false
+    });
+    edibleImageMesh = new THREE.Mesh(geometry, material);
+    edibleImageMesh.name = "edibleImagePreview";
+    edibleImageMesh.renderOrder = 100;
+    edibleImageMesh.userData.isEdibleImage = true;
+  }
+
+  const edibleImageLayer = ensureDecorLayer(entry, EDIBLE_IMAGE_DECOR);
+  if (edibleImageMesh.parent !== edibleImageLayer) {
+    edibleImageMesh.parent?.remove(edibleImageMesh);
+    edibleImageLayer?.add(edibleImageMesh);
+  }
+
+  if (edibleImageMesh.material.map !== edibleImageTexture) {
+    edibleImageMesh.material.map = edibleImageTexture;
+    edibleImageMesh.material.needsUpdate = true;
+  }
+
+  applyEdibleImageTransform(selection, entry);
 }
 
 function setActiveCakeTier(partIndex) {
@@ -4092,7 +5732,7 @@ function setActiveCakeTier(partIndex) {
     }
 
     applyTierColorsToObject(object, selection);
-    applyOuterFrostingColor(entry.outerFrostingObject, selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR);
+    applyOuterFrostingFinish(entry.outerFrostingObject, selection);
     if (entry.outerFrostingObject) {
       entry.outerFrostingObject.visible = object.visible && !entry.peeking;
     }
@@ -4300,12 +5940,12 @@ function initializeCakeFlow(guests, restoredState = null) {
   if (!Number.isFinite(guests) || guests <= 0) return;
 
   const previewRecommendation = getNearestPreviewRecommendationForGuests(guests);
-  const heroPreviewElement = getHeroPreviewElement();
-  const heroSnapshot = heroPreviewElement ? {
-    element: heroPreviewElement,
-    rect: heroPreviewElement.getBoundingClientRect()
-  } : null;
+  const heroSnapshot = getHeroPreviewTransitionSnapshot();
 
+  const shouldAnimateRecommendationEntry = !restoredState;
+  if (shouldAnimateRecommendationEntry) {
+    document.body.classList.add("recommendations-entering");
+  }
   showRecommendationsPageView();
 
   if (guestCountInput) {
@@ -4983,30 +6623,38 @@ const animationTargetRecommendation = topVisuals.find((recommendation) => {
   return isRecommendationMatch(recommendation, previewRecommendation);
 }) || topVisuals.find((recommendation) => recommendation.type === "tiered") || topVisuals[0] || null;
 
-requestAnimationFrame(() => {
-  animateHeroPreviewIntoRecommendation(heroSnapshot, animationTargetRecommendation);
-});
-
 const restoredRecommendation = getSavedRecommendationMatch();
 const restoredCustomizerView = restoredState?.customizerState?.currentView || restoredState?.view;
 if (restoredRecommendation && restoredCustomizerView === "customizer") {
+  document.body.classList.remove("recommendations-entering");
   showCustomizer(restoredRecommendation, restoredState.customizerState, false);
   return;
 }
 
 if (restoredRecommendation && restoredCustomizerView === "summary") {
+  document.body.classList.remove("recommendations-entering");
   showCustomizer(restoredRecommendation, restoredState.customizerState, true);
   return;
 }
 
 if (restoredRecommendation && restoredCustomizerView === "fulfillment") {
+  document.body.classList.remove("recommendations-entering");
   showCustomizer(restoredRecommendation, restoredState.customizerState, false, true);
   return;
 }
 
 if (restoredRecommendation && restoredCustomizerView === "decor") {
+  document.body.classList.remove("recommendations-entering");
   showCustomizer(restoredRecommendation, restoredState.customizerState, false, false, true);
   return;
+}
+
+if (shouldAnimateRecommendationEntry) {
+  requestAnimationFrame(() => {
+    animateHeroPreviewIntoRecommendation(heroSnapshot, animationTargetRecommendation);
+  });
+} else {
+  document.body.classList.remove("recommendations-entering");
 }
 
 function showCustomizer(recommendation, restoredCustomizerState = null, openSummaryOnLoad = false, openFulfillmentOnLoad = false, openDecorOnLoad = false) {
@@ -5279,28 +6927,135 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
             <div class="decor-stage">
               <div class="decor-control-stack">
                 <section class="decor-control-group">
-                  <label class="decor-field-label" for="outer-frosting-select">Finish</label>
-                  <select id="outer-frosting-select" class="decor-select">
-                    <option value="">No outer layer</option>
-                    <option value="${OUTER_FROSTING_DECOR}">Smooth outer layer</option>
-                  </select>
-                  <div class="decor-color-row" aria-label="Outer frosting color">
-                    <button type="button" class="decor-color-swatch is-selected" data-decor-color="#fff7c7" style="--swatch-color: #fff7c7;" aria-label="Vanilla outer frosting"></button>
-                    <button type="button" class="decor-color-swatch" data-decor-color="#f8c7d0" style="--swatch-color: #f8c7d0;" aria-label="Pink outer frosting"></button>
-                    <button type="button" class="decor-color-swatch" data-decor-color="#b9c7f2" style="--swatch-color: #b9c7f2;" aria-label="Blue outer frosting"></button>
-                    <button type="button" class="decor-color-swatch" data-decor-color="#c9dfbd" style="--swatch-color: #c9dfbd;" aria-label="Green outer frosting"></button>
-                    <button type="button" class="decor-color-swatch" data-decor-color="#8b6659" style="--swatch-color: #8b6659;" aria-label="Chocolate outer frosting"></button>
-                    <label class="decor-custom-color-label" for="outer-frosting-color">Custom</label>
-                    <input id="outer-frosting-color" class="decor-color-input" type="color" value="${DEFAULT_OUTER_FROSTING_COLOR}" aria-label="Custom outer frosting color">
+                  <div class="decor-finish-row">
+                    <label class="decor-field-label" for="outer-frosting-select">Finish</label>
+                    <div class="decor-select-color-row">
+                      <select id="outer-frosting-select" class="decor-select">
+                        <option value="">None</option>
+                        ${OUTER_FROSTING_FINISH_OPTIONS.map((option) => `<option value="${option.value}">${option.label}</option>`).join("")}
+                      </select>
+                      <div class="decor-color-picker" data-color-picker="outer">
+                        <button id="outer-frosting-color-preview" type="button" class="decor-color-preview" aria-label="Outer frosting color" aria-expanded="false"></button>
+                        <div id="outer-frosting-color-menu" class="decor-color-popup" hidden>
+                          <div class="decor-color-popup-swatches" aria-label="Outer frosting color">
+                            <button type="button" class="decor-color-swatch is-selected" data-decor-color="#fff7c7" style="--swatch-color: #fff7c7;" aria-label="Vanilla outer frosting"></button>
+                            <button type="button" class="decor-color-swatch" data-decor-color="#f8c7d0" style="--swatch-color: #f8c7d0;" aria-label="Pink outer frosting"></button>
+                            <button type="button" class="decor-color-swatch" data-decor-color="#b9c7f2" style="--swatch-color: #b9c7f2;" aria-label="Blue outer frosting"></button>
+                            <button type="button" class="decor-color-swatch" data-decor-color="#c9dfbd" style="--swatch-color: #c9dfbd;" aria-label="Green outer frosting"></button>
+                            <button type="button" class="decor-color-swatch" data-decor-color="#8b6659" style="--swatch-color: #8b6659;" aria-label="Chocolate outer frosting"></button>
+                            <label class="decor-color-custom-swatch" aria-label="Custom outer frosting color">
+                              <span aria-hidden="true">+</span>
+                              <input id="outer-frosting-color" class="decor-color-input" type="color" value="${DEFAULT_OUTER_FROSTING_COLOR}" aria-label="Custom outer frosting color">
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div id="stripe-color-field" class="stripe-color-field" hidden>
+                    <div class="decor-select-color-row">
+                      <div id="secondary-finish-color-label" class="decor-field-label">Stripe Color</div>
+                      <div class="decor-color-picker" data-color-picker="stripe">
+                        <button id="outer-frosting-stripe-color-preview" type="button" class="decor-color-preview" aria-label="Stripe color" aria-expanded="false"></button>
+                        <div id="outer-frosting-stripe-color-menu" class="decor-color-popup" hidden>
+                          <div class="decor-color-popup-swatches" aria-label="Stripe color">
+                            <button type="button" class="decor-color-swatch stripe-color-swatch is-selected" data-stripe-color="#fff7c7" style="--swatch-color: #fff7c7;" aria-label="Vanilla stripe color"></button>
+                            <button type="button" class="decor-color-swatch stripe-color-swatch" data-stripe-color="#f8c7d0" style="--swatch-color: #f8c7d0;" aria-label="Pink stripe color"></button>
+                            <button type="button" class="decor-color-swatch stripe-color-swatch" data-stripe-color="#b9c7f2" style="--swatch-color: #b9c7f2;" aria-label="Blue stripe color"></button>
+                            <button type="button" class="decor-color-swatch stripe-color-swatch" data-stripe-color="#c9dfbd" style="--swatch-color: #c9dfbd;" aria-label="Green stripe color"></button>
+                            <button type="button" class="decor-color-swatch stripe-color-swatch" data-stripe-color="#8b6659" style="--swatch-color: #8b6659;" aria-label="Chocolate stripe color"></button>
+                            <label class="decor-color-custom-swatch" aria-label="Custom stripe color">
+                              <span aria-hidden="true">+</span>
+                              <input id="outer-frosting-stripe-color" class="decor-color-input stripe-color-input" type="color" value="${DEFAULT_STRIPE_FROSTING_COLOR}" aria-label="Custom stripe color">
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </section>
 
                 <section class="decor-control-group">
-                  <div class="decor-field-label">Decorations</div>
                   <div class="decor-option-buttons" role="group" aria-label="Decorations">
-                    <button id="shell-border-btn" type="button" class="decor-option-btn" data-decor="${SHELL_BORDER_DECOR}" aria-pressed="false">Shell Border</button>
-                    <button id="swirls-btn" type="button" class="decor-option-btn" data-decor="${SWIRL_DECOR}" aria-pressed="false">Swirls</button>
-                    <button id="cherries-btn" type="button" class="decor-option-btn cherry-option-btn" aria-pressed="false">Cherries</button>
+                    <div class="decor-option-row">
+                      <button id="shell-border-btn" type="button" class="decor-option-btn" data-decor="${SHELL_BORDER_DECOR}" aria-pressed="false">Shell Border</button>
+                      <div class="decor-color-picker decor-option-color-picker" data-color-picker="shell-border">
+                        <button id="shell-border-color-preview" type="button" class="decor-color-preview decor-option-color-preview" aria-label="Shell Border color" aria-expanded="false" hidden></button>
+                        <div id="shell-border-color-menu" class="decor-color-popup" hidden>
+                          <div class="decor-color-popup-swatches" aria-label="Shell Border color">
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SHELL_BORDER_DECOR}" data-decoration-color="#fffdf4" style="--swatch-color: #fffdf4;" aria-label="White shell border color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SHELL_BORDER_DECOR}" data-decoration-color="#fff7c7" style="--swatch-color: #fff7c7;" aria-label="Vanilla shell border color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SHELL_BORDER_DECOR}" data-decoration-color="#f8c7d0" style="--swatch-color: #f8c7d0;" aria-label="Pink shell border color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SHELL_BORDER_DECOR}" data-decoration-color="#b9c7f2" style="--swatch-color: #b9c7f2;" aria-label="Blue shell border color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SHELL_BORDER_DECOR}" data-decoration-color="#c9dfbd" style="--swatch-color: #c9dfbd;" aria-label="Green shell border color"></button>
+                            <label class="decor-color-custom-swatch" aria-label="Custom shell border color">
+                              <span aria-hidden="true">+</span>
+                              <input id="shell-border-color-input" class="decor-color-input decoration-color-input" data-decoration-color-target="${SHELL_BORDER_DECOR}" type="color" value="${DEFAULT_SHELL_FROSTING_COLOR}" aria-label="Custom shell border color">
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="decor-option-row">
+                      <button id="swirls-btn" type="button" class="decor-option-btn" data-decor="${SWIRL_DECOR}" aria-pressed="false">Swirls</button>
+                      <div class="decor-color-picker decor-option-color-picker" data-color-picker="swirls">
+                        <button id="swirls-color-preview" type="button" class="decor-color-preview decor-option-color-preview" aria-label="Swirls color" aria-expanded="false" hidden></button>
+                        <div id="swirls-color-menu" class="decor-color-popup" hidden>
+                          <div class="decor-color-popup-swatches" aria-label="Swirls color">
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SWIRL_DECOR}" data-decoration-color="#fffdf4" style="--swatch-color: #fffdf4;" aria-label="White swirls color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SWIRL_DECOR}" data-decoration-color="#fff7c7" style="--swatch-color: #fff7c7;" aria-label="Vanilla swirls color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SWIRL_DECOR}" data-decoration-color="#f8c7d0" style="--swatch-color: #f8c7d0;" aria-label="Pink swirls color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SWIRL_DECOR}" data-decoration-color="#b9c7f2" style="--swatch-color: #b9c7f2;" aria-label="Blue swirls color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SWIRL_DECOR}" data-decoration-color="#c9dfbd" style="--swatch-color: #c9dfbd;" aria-label="Green swirls color"></button>
+                            <label class="decor-color-custom-swatch" aria-label="Custom swirls color">
+                              <span aria-hidden="true">+</span>
+                              <input id="swirls-color-input" class="decor-color-input decoration-color-input" data-decoration-color-target="${SWIRL_DECOR}" type="color" value="${DEFAULT_SHELL_FROSTING_COLOR}" aria-label="Custom swirls color">
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="decor-option-row">
+                      <button id="swags-btn" type="button" class="decor-option-btn" data-decor="${SWAG_DECOR}" aria-pressed="false">Swags</button>
+                      <div class="decor-color-picker decor-option-color-picker" data-color-picker="swags">
+                        <button id="swags-color-preview" type="button" class="decor-color-preview decor-option-color-preview" aria-label="Swags color" aria-expanded="false" hidden></button>
+                        <div id="swags-color-menu" class="decor-color-popup" hidden>
+                          <div class="decor-color-popup-swatches" aria-label="Swags color">
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SWAG_DECOR}" data-decoration-color="#fffdf4" style="--swatch-color: #fffdf4;" aria-label="White swags color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SWAG_DECOR}" data-decoration-color="#fff7c7" style="--swatch-color: #fff7c7;" aria-label="Vanilla swags color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SWAG_DECOR}" data-decoration-color="#f8c7d0" style="--swatch-color: #f8c7d0;" aria-label="Pink swags color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SWAG_DECOR}" data-decoration-color="#b9c7f2" style="--swatch-color: #b9c7f2;" aria-label="Blue swags color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SWAG_DECOR}" data-decoration-color="#c9dfbd" style="--swatch-color: #c9dfbd;" aria-label="Green swags color"></button>
+                            <label class="decor-color-custom-swatch" aria-label="Custom swags color">
+                              <span aria-hidden="true">+</span>
+                              <input id="swags-color-input" class="decor-color-input decoration-color-input" data-decoration-color-target="${SWAG_DECOR}" type="color" value="${DEFAULT_SHELL_FROSTING_COLOR}" aria-label="Custom swags color">
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="decor-option-row">
+                      <button id="shell-swag-btn" type="button" class="decor-option-btn" data-decor="${SHELL_SWAG_DECOR}" aria-pressed="false">Shell Swag</button>
+                      <div class="decor-color-picker decor-option-color-picker" data-color-picker="shell-swag">
+                        <button id="shell-swag-color-preview" type="button" class="decor-color-preview decor-option-color-preview" aria-label="Shell Swag color" aria-expanded="false" hidden></button>
+                        <div id="shell-swag-color-menu" class="decor-color-popup" hidden>
+                          <div class="decor-color-popup-swatches" aria-label="Shell Swag color">
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SHELL_SWAG_DECOR}" data-decoration-color="#fffdf4" style="--swatch-color: #fffdf4;" aria-label="White shell swag color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SHELL_SWAG_DECOR}" data-decoration-color="#fff7c7" style="--swatch-color: #fff7c7;" aria-label="Vanilla shell swag color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SHELL_SWAG_DECOR}" data-decoration-color="#f8c7d0" style="--swatch-color: #f8c7d0;" aria-label="Pink shell swag color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SHELL_SWAG_DECOR}" data-decoration-color="#b9c7f2" style="--swatch-color: #b9c7f2;" aria-label="Blue shell swag color"></button>
+                            <button type="button" class="decor-color-swatch decoration-color-swatch" data-decoration-color-target="${SHELL_SWAG_DECOR}" data-decoration-color="#c9dfbd" style="--swatch-color: #c9dfbd;" aria-label="Green shell swag color"></button>
+                            <label class="decor-color-custom-swatch" aria-label="Custom shell swag color">
+                              <span aria-hidden="true">+</span>
+                              <input id="shell-swag-color-input" class="decor-color-input decoration-color-input" data-decoration-color-target="${SHELL_SWAG_DECOR}" type="color" value="${DEFAULT_SHELL_FROSTING_COLOR}" aria-label="Custom shell swag color">
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="decor-option-row">
+                      <button id="cherries-btn" type="button" class="decor-option-btn cherry-option-btn" aria-pressed="false">Cherries</button>
+                    </div>
                   </div>
                 </section>
 
@@ -5326,18 +7081,49 @@ function showCustomizer(recommendation, restoredCustomizerState = null, openSumm
         </div>
       </div>
 
-      <div id="edible-image-drawer" class="edible-image-drawer accordion-section" data-accordion-section="edible-image">
+      <div id="featured-designs-drawer" class="featured-designs-drawer bottom-decor-drawer accordion-section" data-accordion-section="featured-designs">
+        <button id="featured-designs-toggle" type="button" class="featured-designs-toggle accordion-header" aria-expanded="false">Featured Designs</button>
+        <div id="featured-designs-content" class="featured-designs-content accordion-content">
+          <div class="featured-designs-shell"></div>
+        </div>
+      </div>
+
+      <div id="edible-image-drawer" class="edible-image-drawer bottom-decor-drawer accordion-section" data-accordion-section="edible-image">
         <button id="edible-image-toggle" type="button" class="edible-image-toggle accordion-header" aria-expanded="false">Edible Image</button>
         <div id="edible-image-content" class="edible-image-content accordion-content">
           <div class="edible-image-shell">
-            <label class="edible-image-check">
-              <input id="edible-image-requested" type="checkbox">
-              <span>Add an edible image</span>
-            </label>
             <label class="edible-image-field">
               <span class="decor-field-label">Image file</span>
-              <input id="edible-image-file" class="edible-image-input" type="file" accept="image/*">
+              <span class="edible-image-file-row">
+                <input id="edible-image-file" class="edible-image-input" type="file" accept="image/*">
+                <button id="edible-image-clear" class="edible-image-clear-btn" type="button" aria-label="Remove edible image" hidden>Delete</button>
+              </span>
+              <span id="edible-image-file-name" class="edible-image-file-name" hidden></span>
             </label>
+            <div id="edible-image-transform-controls" class="edible-image-transform-controls" hidden>
+              <div class="edible-image-range-field">
+                <span class="edible-image-range-head">
+                  <span class="decor-field-label">Radius</span>
+                  <button id="edible-image-radius-reset" class="edible-image-reset-btn" type="button">Reset</button>
+                </span>
+                <input id="edible-image-radius" class="edible-image-range" type="range" min="0.2" max="0.92" step="0.005" value="0.92">
+              </div>
+              <div class="edible-image-range-field">
+                <span class="edible-image-range-head">
+                  <span class="decor-field-label">Scale</span>
+                  <button id="edible-image-scale-reset" class="edible-image-reset-btn" type="button">Reset</button>
+                </span>
+                <input id="edible-image-scale" class="edible-image-range" type="range" min="0.1" max="3" step="0.005" value="1">
+              </div>
+              <div class="edible-image-range-field">
+                <span class="edible-image-range-head">
+                  <span class="decor-field-label">Rotation</span>
+                  <button id="edible-image-rotation-reset" class="edible-image-reset-btn" type="button">Reset</button>
+                </span>
+                <input id="edible-image-rotation" class="edible-image-range" type="range" min="-720" max="720" step="0.5" value="0">
+              </div>
+              <p class="edible-image-help">Radius sets the cake-top circle. Scale zooms the image inside it.</p>
+            </div>
             <label class="edible-image-field">
               <span class="decor-field-label">Notes</span>
               <textarea id="edible-image-notes" class="edible-image-textarea" rows="3" placeholder="Describe placement, size, or image details"></textarea>
@@ -5419,10 +7205,11 @@ const parts = getCustomizerParts(recommendation);
 
 const orderSections = document.getElementById("order-sections");
 let requiredDate = restoredCustomizerState?.requiredDate || "";
+let fulfillmentCalendarMonth = getFulfillmentCalendarMonth(requiredDate);
 let requiredTime = restoredCustomizerState?.requiredTime || "";
 let fulfillmentMethod = restoredCustomizerState?.fulfillmentMethod === "delivery" ? "delivery" : "pickup";
 let fulfillmentLocation = restoredCustomizerState?.fulfillmentLocation || "";
-let fulfillmentPanelStep = "method";
+let fulfillmentPanelStep = "schedule";
 let customerName = restoredCustomizerState?.customerName || "";
 let customerEmail = restoredCustomizerState?.customerEmail || "";
 let customerPhone = restoredCustomizerState?.customerPhone || "";
@@ -5443,17 +7230,48 @@ const decorContent = document.getElementById("decor-content");
 const decorOptionButtons = document.querySelectorAll(".decor-option-btn[data-decor]");
 const cherryOptionButton = document.getElementById("cherries-btn");
 const outerFrostingSelect = document.getElementById("outer-frosting-select");
+const outerFrostingColorPreview = document.getElementById("outer-frosting-color-preview");
+const outerFrostingColorMenu = document.getElementById("outer-frosting-color-menu");
 const outerFrostingColorInput = document.getElementById("outer-frosting-color");
-const decorColorSwatches = document.querySelectorAll(".decor-color-swatch");
+const stripeColorField = document.getElementById("stripe-color-field");
+const secondaryFinishColorLabel = document.getElementById("secondary-finish-color-label");
+const outerFrostingStripeColorPreview = document.getElementById("outer-frosting-stripe-color-preview");
+const outerFrostingStripeColorMenu = document.getElementById("outer-frosting-stripe-color-menu");
+const outerFrostingStripeColorInput = document.getElementById("outer-frosting-stripe-color");
+const decorColorSwatches = document.querySelectorAll(".decor-color-swatch[data-decor-color]");
+const stripeColorSwatches = document.querySelectorAll(".stripe-color-swatch");
+const decorationColorSwatches = document.querySelectorAll(".decoration-color-swatch");
+const decorationColorInputs = document.querySelectorAll(".decoration-color-input");
+const shellBorderColorPreview = document.getElementById("shell-border-color-preview");
+const shellBorderColorMenu = document.getElementById("shell-border-color-menu");
+const shellBorderColorInput = document.getElementById("shell-border-color-input");
+const swirlsColorPreview = document.getElementById("swirls-color-preview");
+const swirlsColorMenu = document.getElementById("swirls-color-menu");
+const swirlsColorInput = document.getElementById("swirls-color-input");
+const swagsColorPreview = document.getElementById("swags-color-preview");
+const swagsColorMenu = document.getElementById("swags-color-menu");
+const swagsColorInput = document.getElementById("swags-color-input");
+const shellSwagColorPreview = document.getElementById("shell-swag-color-preview");
+const shellSwagColorMenu = document.getElementById("shell-swag-color-menu");
+const shellSwagColorInput = document.getElementById("shell-swag-color-input");
 const shellBorderEdgeButtons = document.querySelectorAll(".shell-border-edge-btn");
 const shellBorderPlacementGroup = document.querySelector(".shell-border-placement-group");
 const swirlQuantityControls = document.querySelector(".swirl-quantity-controls");
 const swirlQuantityGroup = document.querySelector(".swirl-quantity-group");
 const swirlQuantityButtons = document.querySelectorAll(".swirl-quantity-btn");
 const edibleImageToggle = document.getElementById("edible-image-toggle");
-const edibleImageRequestedInput = document.getElementById("edible-image-requested");
+const featuredDesignsToggle = document.getElementById("featured-designs-toggle");
 const edibleImageFileInput = document.getElementById("edible-image-file");
+const edibleImageClearButton = document.getElementById("edible-image-clear");
+const edibleImageFileNameLabel = document.getElementById("edible-image-file-name");
 const edibleImageNotesInput = document.getElementById("edible-image-notes");
+const edibleImageTransformControls = document.getElementById("edible-image-transform-controls");
+const edibleImageRadiusInput = document.getElementById("edible-image-radius");
+const edibleImageScaleInput = document.getElementById("edible-image-scale");
+const edibleImageRotationInput = document.getElementById("edible-image-rotation");
+const edibleImageRadiusResetButton = document.getElementById("edible-image-radius-reset");
+const edibleImageScaleResetButton = document.getElementById("edible-image-scale-reset");
+const edibleImageRotationResetButton = document.getElementById("edible-image-rotation-reset");
 const extraBackupToggle = document.getElementById("extra-backup-toggle");
 const extraBackupContent = document.getElementById("extra-backup-content");
 const extraBackupSizeButtons = document.querySelectorAll(".extra-backup-size-btn");
@@ -5480,14 +7298,28 @@ const selections = normalizeSingleDozenCupcakeSelections(Array.isArray(restoredC
       filling: selection.filling || "",
       signature: selection.signature || "",
       decor: selection.decor || "",
+      decorations: normalizeDecorationList(selection),
       shellBorderEdge: selection.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE,
+      shellBorderEdges: normalizeShellBorderEdges(selection),
+      shellBorderColor: selection.shellBorderColor || DEFAULT_SHELL_FROSTING_COLOR,
       swirlCount: normalizeSwirlCount(selection.swirlCount),
+      swirlColor: selection.swirlColor || DEFAULT_SHELL_FROSTING_COLOR,
+      swagColor: selection.swagColor || DEFAULT_SHELL_FROSTING_COLOR,
+      shellSwagColor: selection.shellSwagColor || DEFAULT_SHELL_FROSTING_COLOR,
       cherries: selection.cherries === true,
       outerFrosting: selection.outerFrosting || "",
       outerFrostingColor: selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR,
+      outerFrostingStripeColor: selection.outerFrostingStripeColor || DEFAULT_STRIPE_FROSTING_COLOR,
+      outerFrostingOmbreColor: selection.outerFrostingOmbreColor || DEFAULT_OMBRE_FROSTING_COLOR,
       edibleImage: selection.edibleImage === true,
       edibleImageFileName: selection.edibleImageFileName || "",
-      edibleImageNotes: selection.edibleImageNotes || ""
+      edibleImageNotes: selection.edibleImageNotes || "",
+      edibleImageScale: Number.isFinite(Number(selection.edibleImageScale)) ? Number(selection.edibleImageScale) : DEFAULT_EDIBLE_IMAGE_SCALE,
+      edibleImageRadius: Number.isFinite(Number(selection.edibleImageRadius)) ? Number(selection.edibleImageRadius) : DEFAULT_EDIBLE_IMAGE_RADIUS,
+      edibleImageRotation: Number.isFinite(Number(selection.edibleImageRotation)) ? Number(selection.edibleImageRotation) : DEFAULT_EDIBLE_IMAGE_ROTATION,
+      edibleImageX: Number.isFinite(Number(selection.edibleImageX)) ? Number(selection.edibleImageX) : DEFAULT_EDIBLE_IMAGE_POSITION.x,
+      edibleImageY: Number.isFinite(Number(selection.edibleImageY)) ? Number(selection.edibleImageY) : DEFAULT_EDIBLE_IMAGE_POSITION.y,
+      edibleImageDataUrl: selection.edibleImageDataUrl || ""
     }))
   : parts.map(part => ({
       label: part.label,
@@ -5502,14 +7334,20 @@ const selections = normalizeSingleDozenCupcakeSelections(Array.isArray(restoredC
       filling: "",
       signature: "",
       decor: "",
+      decorations: [],
       shellBorderEdge: SHELL_BORDER_DEFAULT_EDGE,
+      shellBorderEdges: [SHELL_BORDER_DEFAULT_EDGE],
+      shellBorderColor: DEFAULT_SHELL_FROSTING_COLOR,
       swirlCount: DEFAULT_SWIRL_COUNT,
+      swirlColor: DEFAULT_SHELL_FROSTING_COLOR,
+      swagColor: DEFAULT_SHELL_FROSTING_COLOR,
+      shellSwagColor: DEFAULT_SHELL_FROSTING_COLOR,
       cherries: false,
       outerFrosting: "",
       outerFrostingColor: DEFAULT_OUTER_FROSTING_COLOR,
-      edibleImage: false,
-      edibleImageFileName: "",
-      edibleImageNotes: ""
+      outerFrostingStripeColor: DEFAULT_STRIPE_FROSTING_COLOR,
+      outerFrostingOmbreColor: DEFAULT_OMBRE_FROSTING_COLOR,
+      ...getDefaultEdibleImageSettings()
     })));
 
 if (activeTierIndex !== null && !selections[activeTierIndex]) {
@@ -5575,14 +7413,28 @@ function persistCustomizerState(view = currentCustomizerView) {
       filling: selection.filling || "",
       signature: selection.signature || "",
       decor: selection.decor || "",
+      decorations: normalizeDecorationList(selection),
       shellBorderEdge: selection.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE,
+      shellBorderEdges: normalizeShellBorderEdges(selection),
+      shellBorderColor: selection.shellBorderColor || DEFAULT_SHELL_FROSTING_COLOR,
       swirlCount: normalizeSwirlCount(selection.swirlCount),
+      swirlColor: selection.swirlColor || DEFAULT_SHELL_FROSTING_COLOR,
+      swagColor: selection.swagColor || DEFAULT_SHELL_FROSTING_COLOR,
+      shellSwagColor: selection.shellSwagColor || DEFAULT_SHELL_FROSTING_COLOR,
       cherries: selection.cherries === true,
       outerFrosting: selection.outerFrosting || "",
       outerFrostingColor: selection.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR,
+      outerFrostingStripeColor: selection.outerFrostingStripeColor || DEFAULT_STRIPE_FROSTING_COLOR,
+      outerFrostingOmbreColor: selection.outerFrostingOmbreColor || DEFAULT_OMBRE_FROSTING_COLOR,
       edibleImage: selection.edibleImage === true,
       edibleImageFileName: selection.edibleImageFileName || "",
-      edibleImageNotes: selection.edibleImageNotes || ""
+      edibleImageNotes: selection.edibleImageNotes || "",
+      edibleImageScale: Number.isFinite(Number(selection.edibleImageScale)) ? Number(selection.edibleImageScale) : DEFAULT_EDIBLE_IMAGE_SCALE,
+      edibleImageRadius: Number.isFinite(Number(selection.edibleImageRadius)) ? Number(selection.edibleImageRadius) : DEFAULT_EDIBLE_IMAGE_RADIUS,
+      edibleImageRotation: Number.isFinite(Number(selection.edibleImageRotation)) ? Number(selection.edibleImageRotation) : DEFAULT_EDIBLE_IMAGE_ROTATION,
+      edibleImageX: Number.isFinite(Number(selection.edibleImageX)) ? Number(selection.edibleImageX) : DEFAULT_EDIBLE_IMAGE_POSITION.x,
+      edibleImageY: Number.isFinite(Number(selection.edibleImageY)) ? Number(selection.edibleImageY) : DEFAULT_EDIBLE_IMAGE_POSITION.y,
+      edibleImageDataUrl: selection.edibleImageDataUrl || ""
     }))
   }, view));
 }
@@ -5626,10 +7478,11 @@ function setCustomizerStep(step = "flavor") {
   }
 
   if (isDecorStep) {
-    fulfillmentPanelStep = "method";
+    fulfillmentPanelStep = "schedule";
+    setAccordionSection("decor");
     syncDecorButtons(activeTierIndex);
   } else if (isFulfillmentStep) {
-    fulfillmentPanelStep = "method";
+    fulfillmentPanelStep = "schedule";
     renderFulfillmentPanel();
     showFinishedOrderModel();
     requestAnimationFrame(() => {
@@ -5749,6 +7602,7 @@ function getSelectionServings(selection) {
 }
 
 function buildOrderFromCustomizer() {
+  enforceTopTierEdibleImageOnly();
   const summarySelections = selections.map((selection) => ({ ...selection }));
   const prices = getStructuredPriceFields(summarySelections);
   const now = new Date();
@@ -5792,14 +7646,27 @@ function buildOrderFromCustomizer() {
       filling: selection.filling || "",
       signature: selection.signature || "",
       decor: selection.decor || "",
+      decorations: normalizeDecorationList(selection),
       shellBorderEdge: selection.shellBorderEdge || "",
+      shellBorderEdges: normalizeShellBorderEdges(selection),
+      shellBorderColor: selection.shellBorderColor || DEFAULT_SHELL_FROSTING_COLOR,
       swirlCount: selection.swirlCount || 0,
+      swirlColor: selection.swirlColor || DEFAULT_SHELL_FROSTING_COLOR,
+      swagColor: selection.swagColor || DEFAULT_SHELL_FROSTING_COLOR,
+      shellSwagColor: selection.shellSwagColor || DEFAULT_SHELL_FROSTING_COLOR,
       cherries: selection.cherries === true,
       outerFrosting: selection.outerFrosting || "",
       outerFrostingColor: selection.outerFrostingColor || "",
+      outerFrostingStripeColor: selection.outerFrostingStripeColor || "",
+      outerFrostingOmbreColor: selection.outerFrostingOmbreColor || "",
       edibleImage: selection.edibleImage === true,
       edibleImageFileName: selection.edibleImageFileName || "",
       edibleImageNotes: selection.edibleImageNotes || "",
+      edibleImageScale: selection.edibleImageScale || DEFAULT_EDIBLE_IMAGE_SCALE,
+      edibleImageRadius: selection.edibleImageRadius || DEFAULT_EDIBLE_IMAGE_RADIUS,
+      edibleImageRotation: selection.edibleImageRotation || DEFAULT_EDIBLE_IMAGE_ROTATION,
+      edibleImageX: selection.edibleImageX || 0,
+      edibleImageY: selection.edibleImageY || 0,
       basePrice,
       flavorUpcharges: extras.flavor,
       fillingUpcharges: extras.filling,
@@ -5816,15 +7683,38 @@ function buildOrderFromCustomizer() {
   const decorNotes = summarySelections
     .map((selection) => {
       const parts = [];
-      if (selection.decor) parts.push(selection.decor);
-      if (selection.shellBorderEdge) parts.push(`shell border: ${selection.shellBorderEdge}`);
-      if (selection.swirlCount) parts.push(`swirls: ${selection.swirlCount}`);
-      if (selection.cherries) parts.push("cherries");
-      if (selection.outerFrosting) parts.push(`outer frosting: ${selection.outerFrosting}`);
+      const activeDecorations = normalizeDecorationList(selection);
+      if (activeDecorations.length) parts.push(`decorations: ${activeDecorations.map(getDecorationLabel).join(", ")}`);
+      if (activeDecorations.includes(SHELL_BORDER_DECOR)) {
+        parts.push(`shell border: ${normalizeShellBorderEdges(selection).join(" + ")}`);
+        parts.push(`shell border color: ${selection.shellBorderColor || DEFAULT_SHELL_FROSTING_COLOR}`);
+      }
+      if (activeDecorations.includes(SWIRL_DECOR) && selection.swirlCount) {
+        parts.push(`swirls: ${selection.swirlCount}`);
+        parts.push(`swirl color: ${selection.swirlColor || DEFAULT_SHELL_FROSTING_COLOR}`);
+      }
+      if (activeDecorations.includes(CHERRY_DECOR)) parts.push("cherries");
+      if (activeDecorations.includes(SWAG_DECOR)) {
+        parts.push(`swag color: ${selection.swagColor || DEFAULT_SHELL_FROSTING_COLOR}`);
+      }
+      if (activeDecorations.includes(SHELL_SWAG_DECOR)) {
+        parts.push(`shell swag color: ${selection.shellSwagColor || DEFAULT_SHELL_FROSTING_COLOR}`);
+      }
+      if (selection.outerFrosting) parts.push(`outer frosting: ${getOuterFrostingLabel(selection.outerFrosting)}`);
       if (selection.outerFrostingColor) parts.push(`outer color: ${selection.outerFrostingColor}`);
+      if (selection.outerFrosting === STRIPED_OUTER_FROSTING_DECOR && selection.outerFrostingStripeColor) {
+        parts.push(`stripe color: ${selection.outerFrostingStripeColor}`);
+      }
+      if (selection.outerFrosting === OMBRE_OUTER_FROSTING_DECOR && selection.outerFrostingOmbreColor) {
+        parts.push(`ombre color: ${selection.outerFrostingOmbreColor}`);
+      }
       if (selection.edibleImage) {
         parts.push("edible image");
         if (selection.edibleImageFileName) parts.push(`image file: ${selection.edibleImageFileName}`);
+        parts.push(`image radius: ${selection.edibleImageRadius || DEFAULT_EDIBLE_IMAGE_RADIUS}`);
+        parts.push(`image scale: ${selection.edibleImageScale || DEFAULT_EDIBLE_IMAGE_SCALE}`);
+        parts.push(`image rotation: ${selection.edibleImageRotation || DEFAULT_EDIBLE_IMAGE_ROTATION}`);
+        parts.push(`image position: ${selection.edibleImageX || 0}, ${selection.edibleImageY || 0}`);
         if (selection.edibleImageNotes) parts.push(`image notes: ${selection.edibleImageNotes}`);
       }
       return parts.filter(Boolean).join(", ");
@@ -5854,7 +7744,7 @@ function buildOrderFromCustomizer() {
     flavor: summarySelections.map((selection) => selection.flavor).filter(Boolean).join(", "),
     frosting: summarySelections.map((selection) => selection.frosting).filter(Boolean).join(", "),
     filling: summarySelections.map((selection) => selection.filling).filter(Boolean).join(", "),
-    decor: summarySelections.map((selection) => selection.decor).filter(Boolean).join(", "),
+    decor: summarySelections.flatMap((selection) => normalizeDecorationList(selection)).map(getDecorationLabel).filter(Boolean).join(", "),
     notes: decorNotes,
     guestCount: Number(guestCountInput?.value || 0),
     servings: recommendation?.servings || summarySelections.reduce((total, selection) => total + getSelectionServings(selection), 0),
@@ -6011,31 +7901,159 @@ function escapeSummaryHTML(value) {
     .replace(/'/g, "&#039;");
 }
 
+function getLocalDateValue(date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function parseLocalDateValue(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (
+    date.getFullYear() !== Number(match[1]) ||
+    date.getMonth() !== Number(match[2]) - 1 ||
+    date.getDate() !== Number(match[3])
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function getFulfillmentCalendarMonth(value = requiredDate) {
+  const selectedDate = parseLocalDateValue(value);
+  const baseDate = selectedDate || new Date();
+  return new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+}
+
+function addCalendarMonths(date, offset) {
+  return new Date(date.getFullYear(), date.getMonth() + offset, 1);
+}
+
+function formatFulfillmentCalendarMonth(date) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric"
+  }).format(date);
+}
+
+function formatFulfillmentTimeLabel(value) {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(`2000-01-01T${value}`));
+}
+
+function renderFulfillmentTimeOptions() {
+  const options = ['<option value="">Select time</option>'];
+  const startMinutes = 10 * 60;
+  const endMinutes = 17 * 60;
+
+  for (let minutes = startMinutes; minutes <= endMinutes; minutes += 15) {
+    const hours = Math.floor(minutes / 60);
+    const minuteValue = minutes % 60;
+    const value = `${String(hours).padStart(2, "0")}:${String(minuteValue).padStart(2, "0")}`;
+    options.push(`<option value="${value}"${requiredTime === value ? " selected" : ""}>${formatFulfillmentTimeLabel(value)}</option>`);
+  }
+
+  return options.join("");
+}
+
+function renderFulfillmentDateCalendar() {
+  const today = new Date();
+  const todayValue = getLocalDateValue(today);
+  const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthStart = fulfillmentCalendarMonth || getFulfillmentCalendarMonth();
+  const selectedValue = requiredDate || "";
+  const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+  const leadingBlankDays = monthStart.getDay();
+  const canGoPrevious = monthStart.getTime() > currentMonthStart.getTime();
+  const weekdays = ["S", "M", "T", "W", "T", "F", "S"];
+  const cells = [];
+
+  for (let index = 0; index < leadingBlankDays; index += 1) {
+    cells.push('<span class="fulfillment-calendar-empty" aria-hidden="true"></span>');
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const cellDate = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
+    const cellValue = getLocalDateValue(cellDate);
+    const isPastDate = cellValue < todayValue;
+    const isSelected = cellValue === selectedValue;
+    const isToday = cellValue === todayValue;
+    cells.push(`
+      <button type="button" class="fulfillment-calendar-day${isSelected ? " is-selected" : ""}${isToday ? " is-today" : ""}" data-date="${cellValue}" ${isPastDate ? "disabled" : ""} aria-pressed="${isSelected ? "true" : "false"}" aria-label="${new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(cellDate)}">
+        ${day}
+      </button>
+    `);
+  }
+
+  return `
+    <div class="fulfillment-calendar" aria-label="Calendar">
+      <div class="fulfillment-calendar-head">
+        <button type="button" class="fulfillment-calendar-nav" data-calendar-shift="-1" ${canGoPrevious ? "" : "disabled"} aria-label="Previous month">&lt;</button>
+        <strong>${formatFulfillmentCalendarMonth(monthStart)}</strong>
+        <button type="button" class="fulfillment-calendar-nav" data-calendar-shift="1" aria-label="Next month">&gt;</button>
+      </div>
+      <div class="fulfillment-calendar-weekdays" aria-hidden="true">
+        ${weekdays.map((weekday) => `<span>${weekday}</span>`).join("")}
+      </div>
+      <div class="fulfillment-calendar-grid">
+        ${cells.join("")}
+      </div>
+    </div>
+  `;
+}
+
 function getDecorSummaryText(selection) {
   const details = [];
-  if (selection.decor) {
-    details.push(selection.decor.charAt(0).toUpperCase() + selection.decor.slice(1));
+  const activeDecorations = normalizeDecorationList(selection);
+  activeDecorations.forEach((decorType) => {
+    details.push(getDecorationLabel(decorType));
+  });
+  if (activeDecorations.includes(SHELL_BORDER_DECOR)) {
+    details.push(`Shell border: ${normalizeShellBorderEdges(selection).join(" + ")}`);
+    details.push(`Shell border color: ${selection.shellBorderColor || DEFAULT_SHELL_FROSTING_COLOR}`);
   }
-  if (selection.decor === SHELL_BORDER_DECOR && selection.shellBorderEdge) {
-    details.push(`Shell border: ${selection.shellBorderEdge}`);
-  }
-  if (selection.decor === SWIRL_DECOR && selection.swirlCount) {
+  if (activeDecorations.includes(SWIRL_DECOR) && selection.swirlCount) {
     details.push(`Swirls: ${normalizeSwirlCount(selection.swirlCount)}`);
+    details.push(`Swirl color: ${selection.swirlColor || DEFAULT_SHELL_FROSTING_COLOR}`);
   }
-  if (selection.decor === SWIRL_DECOR && selection.cherries) {
+  if (activeDecorations.includes(CHERRY_DECOR)) {
     details.push("Cherries");
   }
+  if (activeDecorations.includes(SWAG_DECOR)) {
+    details.push(`Swag color: ${selection.swagColor || DEFAULT_SHELL_FROSTING_COLOR}`);
+  }
+  if (activeDecorations.includes(SHELL_SWAG_DECOR)) {
+    details.push(`Shell swag color: ${selection.shellSwagColor || DEFAULT_SHELL_FROSTING_COLOR}`);
+  }
   if (selection.outerFrosting) {
-    details.push(`Outer frosting: ${selection.outerFrosting}`);
+    details.push(`Outer frosting: ${getOuterFrostingLabel(selection.outerFrosting)}`);
   }
   if (selection.outerFrosting && selection.outerFrostingColor) {
     details.push(`Color: ${selection.outerFrostingColor}`);
+  }
+  if (selection.outerFrosting === STRIPED_OUTER_FROSTING_DECOR && selection.outerFrostingStripeColor) {
+    details.push(`Stripe color: ${selection.outerFrostingStripeColor}`);
+  }
+  if (selection.outerFrosting === OMBRE_OUTER_FROSTING_DECOR && selection.outerFrostingOmbreColor) {
+    details.push(`Ombre color: ${selection.outerFrostingOmbreColor}`);
   }
   if (selection.edibleImage) {
     details.push("Edible image");
     if (selection.edibleImageFileName) {
       details.push(`File: ${selection.edibleImageFileName}`);
     }
+    details.push(`Radius: ${selection.edibleImageRadius || DEFAULT_EDIBLE_IMAGE_RADIUS}`);
+    details.push(`Scale: ${selection.edibleImageScale || DEFAULT_EDIBLE_IMAGE_SCALE}`);
+    details.push(`Rotation: ${selection.edibleImageRotation || DEFAULT_EDIBLE_IMAGE_ROTATION}`);
+    details.push(`Position: ${selection.edibleImageX || 0}, ${selection.edibleImageY || 0}`);
     if (selection.edibleImageNotes) {
       details.push(`Notes: ${selection.edibleImageNotes}`);
     }
@@ -6051,13 +8069,11 @@ function renderFulfillmentPanel() {
     fulfillmentMethod = "pickup";
   }
 
-  const isScheduleStep = fulfillmentPanelStep === "schedule";
   const isContactStep = fulfillmentPanelStep === "contact";
+  const isScheduleStep = !isContactStep;
 
   panel.innerHTML = `
     <div class="fulfillment-panel-shell${isScheduleStep ? " is-schedule-step" : isContactStep ? " is-contact-step" : " is-method-step"}">
-      <p class="fulfillment-panel-kicker">Order details</p>
-
       ${!isContactStep ? `
       <div class="fulfillment-options inline-fulfillment-options" role="radiogroup" aria-label="Pickup or delivery">
         <label class="fulfillment-option${fulfillmentMethod === "delivery" ? " is-selected" : ""}">
@@ -6082,13 +8098,14 @@ function renderFulfillmentPanel() {
 
       ${isScheduleStep ? `
       <div class="fulfillment-panel-grid">
+        <div class="fulfillment-date-field fulfillment-calendar-field is-visible">
+          <input type="date" id="panel-required-date" class="fulfillment-date-input fulfillment-date-native" value="${requiredDate}" min="${getLocalDateValue(new Date())}" tabindex="-1" aria-hidden="true">
+          ${renderFulfillmentDateCalendar()}
+        </div>
         <label class="fulfillment-date-field is-visible">
-          <span class="fulfillment-date-label">Date required</span>
-          <input type="date" id="panel-required-date" class="fulfillment-date-input" value="${requiredDate}" min="${new Date().toISOString().split("T")[0]}">
-        </label>
-        <label class="fulfillment-date-field is-visible">
-          <span class="fulfillment-date-label">Time required</span>
-          <input type="time" id="panel-required-time" class="fulfillment-date-input" value="${requiredTime}">
+          <select id="panel-required-time" class="fulfillment-date-input fulfillment-time-select" aria-label="Time">
+            ${renderFulfillmentTimeOptions()}
+          </select>
         </label>
       </div>
       ` : ""}
@@ -6111,7 +8128,7 @@ function renderFulfillmentPanel() {
       ` : ""}
 
       <div class="fulfillment-actions inline-fulfillment-actions">
-        <button type="button" class="fulfillment-primary-btn" id="${isContactStep ? "fulfillment-review-order" : isScheduleStep ? "fulfillment-contact-step" : "fulfillment-next-step"}">${isContactStep ? "Review Order" : isScheduleStep ? "Contact Info" : "Date / Time Required"}</button>
+        <button type="button" class="fulfillment-primary-btn" id="${isContactStep ? "fulfillment-review-order" : "fulfillment-contact-step"}">${isContactStep ? "Review Order" : "Contact Info"}</button>
       </div>
     </div>
   `;
@@ -6122,6 +8139,7 @@ function renderFulfillmentPanel() {
   const locationInput = panel.querySelector("#panel-fulfillment-location");
   const dateInput = panel.querySelector("#panel-required-date");
   const timeInput = panel.querySelector("#panel-required-time");
+  const calendar = panel.querySelector(".fulfillment-calendar");
   const customerNameInput = panel.querySelector("#panel-customer-name");
   const customerEmailInput = panel.querySelector("#panel-customer-email");
   const customerPhoneInput = panel.querySelector("#panel-customer-phone");
@@ -6151,7 +8169,25 @@ function renderFulfillmentPanel() {
 
   dateInput?.addEventListener("change", () => {
     requiredDate = dateInput.value || "";
+    fulfillmentCalendarMonth = getFulfillmentCalendarMonth(requiredDate);
     persistCustomizerState("fulfillment");
+  });
+
+  calendar?.querySelectorAll(".fulfillment-calendar-nav").forEach((button) => {
+    button.addEventListener("click", () => {
+      fulfillmentCalendarMonth = addCalendarMonths(fulfillmentCalendarMonth || getFulfillmentCalendarMonth(), Number(button.dataset.calendarShift) || 0);
+      renderFulfillmentPanel();
+    });
+  });
+
+  calendar?.querySelectorAll(".fulfillment-calendar-day").forEach((button) => {
+    button.addEventListener("click", () => {
+      requiredDate = button.dataset.date || "";
+      if (dateInput) dateInput.value = requiredDate;
+      fulfillmentCalendarMonth = getFulfillmentCalendarMonth(requiredDate);
+      persistCustomizerState("fulfillment");
+      renderFulfillmentPanel();
+    });
   });
 
   timeInput?.addEventListener("change", () => {
@@ -6174,26 +8210,14 @@ function renderFulfillmentPanel() {
     persistCustomizerState("fulfillment");
   });
 
-  panel.querySelector("#fulfillment-next-step")?.addEventListener("click", () => {
-    if (fulfillmentMethod === "delivery" && !locationInput?.value.trim()) {
-      locationInput?.focus();
-      return;
-    }
-
-    fulfillmentLocation = locationInput?.value || "";
-    fulfillmentPanelStep = "schedule";
-    persistCustomizerState("fulfillment");
-    renderFulfillmentPanel();
-  });
-
   panel.querySelector("#fulfillment-contact-step")?.addEventListener("click", () => {
     if (fulfillmentMethod === "delivery" && !locationInput?.value.trim()) {
       locationInput?.focus();
       return;
     }
-    if (!dateInput?.value) {
-      dateInput?.focus();
-      dateInput?.showPicker?.();
+    if (!requiredDate) {
+      const focusTarget = calendar?.querySelector(".fulfillment-calendar-day:not(:disabled)");
+      focusTarget?.focus();
       return;
     }
     if (!timeInput?.value) {
@@ -6203,7 +8227,7 @@ function renderFulfillmentPanel() {
     }
 
     fulfillmentLocation = locationInput?.value || "";
-    requiredDate = dateInput.value || "";
+    requiredDate = requiredDate || dateInput?.value || "";
     requiredTime = timeInput.value || "";
     persistCustomizerState("fulfillment");
     fulfillmentPanelStep = "contact";
@@ -6418,7 +8442,7 @@ function getCakeEntryByIndex(index) {
 
 function shouldShowPeekToggle(index) {
   const selection = selections[index];
-  return Boolean(selection?.size && selection.outerFrosting === OUTER_FROSTING_DECOR);
+  return Boolean(selection?.size && OUTER_FROSTING_MESH_FINISHES.includes(selection.outerFrosting));
 }
 
 syncPeekToggleForIndex = function (index) {
@@ -6513,41 +8537,210 @@ function getDecorTargetIndex() {
   return selections.length ? 0 : null;
 }
 
-function syncEdibleImageControls(index) {
-  const selection = index !== null ? selections[index] : null;
-  const isEnabled = Boolean(selection?.size);
+function closeDecorColorPopups(except = null) {
+  [
+    { menu: outerFrostingColorMenu, button: outerFrostingColorPreview, key: "outer" },
+    { menu: outerFrostingStripeColorMenu, button: outerFrostingStripeColorPreview, key: "stripe" },
+    { menu: shellBorderColorMenu, button: shellBorderColorPreview, key: SHELL_BORDER_DECOR },
+    { menu: swirlsColorMenu, button: swirlsColorPreview, key: SWIRL_DECOR },
+    { menu: swagsColorMenu, button: swagsColorPreview, key: SWAG_DECOR },
+    { menu: shellSwagColorMenu, button: shellSwagColorPreview, key: SHELL_SWAG_DECOR }
+  ].forEach(({ menu, button, key }) => {
+    const shouldStayOpen = except === key;
+    if (menu) menu.hidden = !shouldStayOpen;
+    if (button) {
+      button.classList.toggle("is-open", shouldStayOpen);
+      button.setAttribute("aria-expanded", shouldStayOpen ? "true" : "false");
+    }
+  });
+}
 
-  if (edibleImageRequestedInput) {
-    edibleImageRequestedInput.checked = selection?.edibleImage === true;
-    edibleImageRequestedInput.disabled = !isEnabled;
+function toggleDecorColorPopup(key) {
+  const menu = key === "stripe"
+    ? outerFrostingStripeColorMenu
+    : key === SHELL_BORDER_DECOR
+      ? shellBorderColorMenu
+      : key === SWIRL_DECOR
+        ? swirlsColorMenu
+        : key === SWAG_DECOR
+          ? swagsColorMenu
+          : key === SHELL_SWAG_DECOR
+            ? shellSwagColorMenu
+            : outerFrostingColorMenu;
+  closeDecorColorPopups(menu?.hidden ? key : null);
+}
+
+function applyOuterFrostingColorSelection(targetIndex, colorValue) {
+  if (targetIndex === null || !selections[targetIndex]?.size) return;
+
+  if (!isOuterFrostingFinish(selections[targetIndex].outerFrosting)) {
+    selections[targetIndex].outerFrosting = OUTER_FROSTING_DECOR;
   }
+  selections[targetIndex].outerFrostingColor = colorValue || DEFAULT_OUTER_FROSTING_COLOR;
+
+  syncDecorButtons(targetIndex);
+  void syncOuterFrostingForIndex(targetIndex);
+  void syncDecorForIndex(targetIndex);
+  syncPeekToggleForIndex(targetIndex);
+  persistCustomizerState();
+}
+
+function applySecondaryFinishColorSelection(targetIndex, colorValue) {
+  if (targetIndex === null || !selections[targetIndex]?.size) return;
+
+  const selection = selections[targetIndex];
+  const isOmbre = selection.outerFrosting === OMBRE_OUTER_FROSTING_DECOR;
+  if (isOmbre) {
+    selection.outerFrostingOmbreColor = colorValue || DEFAULT_OMBRE_FROSTING_COLOR;
+  } else {
+    selection.outerFrosting = STRIPED_OUTER_FROSTING_DECOR;
+    selection.outerFrostingStripeColor = colorValue || DEFAULT_STRIPE_FROSTING_COLOR;
+  }
+  if (!selection.outerFrostingColor) {
+    selection.outerFrostingColor = DEFAULT_OUTER_FROSTING_COLOR;
+  }
+
+  syncDecorButtons(targetIndex);
+  void syncOuterFrostingForIndex(targetIndex);
+  void syncDecorForIndex(targetIndex);
+  syncPeekToggleForIndex(targetIndex);
+  persistCustomizerState();
+}
+
+function getDecorationColor(selection, decorType) {
+  if (decorType === SHELL_BORDER_DECOR) {
+    return selection?.shellBorderColor || DEFAULT_SHELL_FROSTING_COLOR;
+  }
+  if (decorType === SWIRL_DECOR) {
+    return selection?.swirlColor || DEFAULT_SHELL_FROSTING_COLOR;
+  }
+  if (decorType === SHELL_SWAG_DECOR) {
+    return selection?.shellSwagColor || DEFAULT_SHELL_FROSTING_COLOR;
+  }
+  if (decorType === SWAG_DECOR) {
+    return selection?.swagColor || DEFAULT_SHELL_FROSTING_COLOR;
+  }
+  return DEFAULT_SHELL_FROSTING_COLOR;
+}
+
+function applyDecorationColorSelection(targetIndex, decorType, colorValue) {
+  if (targetIndex === null || !selections[targetIndex]?.size) return;
+
+  if (decorType === SHELL_SWAG_DECOR) {
+    selections[targetIndex].shellSwagColor = colorValue || DEFAULT_SHELL_FROSTING_COLOR;
+  } else if (decorType === SWAG_DECOR) {
+    selections[targetIndex].swagColor = colorValue || DEFAULT_SHELL_FROSTING_COLOR;
+  } else if (decorType === SHELL_BORDER_DECOR) {
+    selections[targetIndex].shellBorderColor = colorValue || DEFAULT_SHELL_FROSTING_COLOR;
+  } else if (decorType === SWIRL_DECOR) {
+    selections[targetIndex].swirlColor = colorValue || DEFAULT_SHELL_FROSTING_COLOR;
+  } else {
+    return;
+  }
+
+  syncDecorButtons(targetIndex);
+  void syncDecorForIndex(targetIndex);
+  syncPeekToggleForIndex(targetIndex);
+  persistCustomizerState();
+}
+
+function syncEdibleImageControls(index) {
+  const edibleIndex = getEdibleImageSelectionIndex();
+  const selection = edibleIndex !== null ? selections[edibleIndex] : null;
+  const isEnabled = Boolean(selection?.size);
+  const hasImageFile = Boolean(selection?.edibleImage && selection.edibleImageDataUrl);
+
   if (edibleImageFileInput) {
     edibleImageFileInput.disabled = !isEnabled;
+  }
+  if (edibleImageClearButton) {
+    edibleImageClearButton.hidden = !hasImageFile;
+    edibleImageClearButton.disabled = !hasImageFile;
+  }
+  if (edibleImageFileNameLabel) {
+    edibleImageFileNameLabel.hidden = !hasImageFile;
+    edibleImageFileNameLabel.textContent = hasImageFile ? selection.edibleImageFileName || "Uploaded image" : "";
   }
   if (edibleImageNotesInput) {
     edibleImageNotesInput.value = selection?.edibleImageNotes || "";
     edibleImageNotesInput.disabled = !isEnabled;
   }
+  if (edibleImageTransformControls) {
+    edibleImageTransformControls.hidden = !(isEnabled && hasImageFile);
+  }
+  if (edibleImageRadiusInput) {
+    edibleImageRadiusInput.value = String(selection?.edibleImageRadius || DEFAULT_EDIBLE_IMAGE_RADIUS);
+    edibleImageRadiusInput.disabled = !isEnabled || !hasImageFile;
+  }
+  if (edibleImageScaleInput) {
+    edibleImageScaleInput.value = String(selection?.edibleImageScale || DEFAULT_EDIBLE_IMAGE_SCALE);
+    edibleImageScaleInput.disabled = !isEnabled || !hasImageFile;
+  }
+  if (edibleImageRotationInput) {
+    edibleImageRotationInput.value = String(selection?.edibleImageRotation || DEFAULT_EDIBLE_IMAGE_ROTATION);
+    edibleImageRotationInput.disabled = !isEnabled || !hasImageFile;
+  }
+  if (edibleImageRadiusResetButton) {
+    edibleImageRadiusResetButton.disabled = !isEnabled || !hasImageFile;
+  }
+  if (edibleImageScaleResetButton) {
+    edibleImageScaleResetButton.disabled = !isEnabled || !hasImageFile;
+  }
+  if (edibleImageRotationResetButton) {
+    edibleImageRotationResetButton.disabled = !isEnabled || !hasImageFile;
+  }
 }
 
 function syncDecorButtons(index) {
+  const selection = index !== null ? selections[index] : null;
+  const activeDecorations = normalizeDecorationList(selection || {});
+
   decorOptionButtons.forEach((button) => {
-    const isSelected = index !== null && selections[index]?.decor === button.dataset.decor;
+    const isSelected = activeDecorations.includes(button.dataset.decor);
     button.classList.toggle("is-selected", !!isSelected);
     button.setAttribute("aria-pressed", isSelected ? "true" : "false");
-    button.disabled = !selections[index]?.size;
+    button.disabled = !selection?.size;
   });
 
-  const selection = index !== null ? selections[index] : null;
   if (outerFrostingSelect) {
     outerFrostingSelect.value = selection?.outerFrosting || "";
     outerFrostingSelect.disabled = !selection?.size;
   }
 
   const color = selection?.outerFrostingColor || DEFAULT_OUTER_FROSTING_COLOR;
+  if (outerFrostingColorPreview) {
+    outerFrostingColorPreview.style.setProperty("--preview-color", color);
+    outerFrostingColorPreview.disabled = !selection?.size;
+  }
   if (outerFrostingColorInput) {
     outerFrostingColorInput.value = color;
     outerFrostingColorInput.disabled = !selection?.size;
+  }
+
+  const isStripedOuterFrosting = selection?.outerFrosting === STRIPED_OUTER_FROSTING_DECOR;
+  const isOmbreOuterFrosting = selection?.outerFrosting === OMBRE_OUTER_FROSTING_DECOR;
+  const hasSecondaryFinishColor = isStripedOuterFrosting || isOmbreOuterFrosting;
+  const secondaryFinishColor = isOmbreOuterFrosting
+    ? selection?.outerFrostingOmbreColor || DEFAULT_OMBRE_FROSTING_COLOR
+    : selection?.outerFrostingStripeColor || DEFAULT_STRIPE_FROSTING_COLOR;
+  if (stripeColorField) {
+    stripeColorField.hidden = !hasSecondaryFinishColor;
+  }
+  if (secondaryFinishColorLabel) {
+    secondaryFinishColorLabel.textContent = isOmbreOuterFrosting ? "Ombre Color" : "Stripe Color";
+  }
+  if (outerFrostingStripeColorPreview) {
+    outerFrostingStripeColorPreview.style.setProperty("--preview-color", secondaryFinishColor);
+    outerFrostingStripeColorPreview.disabled = !selection?.size || !hasSecondaryFinishColor;
+    outerFrostingStripeColorPreview.setAttribute("aria-label", isOmbreOuterFrosting ? "Ombre color" : "Stripe color");
+  }
+  if (outerFrostingStripeColorInput) {
+    outerFrostingStripeColorInput.value = secondaryFinishColor;
+    outerFrostingStripeColorInput.disabled = !selection?.size || !hasSecondaryFinishColor;
+    outerFrostingStripeColorInput.setAttribute("aria-label", isOmbreOuterFrosting ? "Custom ombre color" : "Custom stripe color");
+  }
+  if (!hasSecondaryFinishColor && outerFrostingStripeColorMenu && !outerFrostingStripeColorMenu.hidden) {
+    closeDecorColorPopups();
   }
 
   decorColorSwatches.forEach((button) => {
@@ -6555,20 +8748,87 @@ function syncDecorButtons(index) {
     button.disabled = !selection?.size;
   });
 
-  const isShellBorderSelected = selection?.decor === SHELL_BORDER_DECOR;
+  stripeColorSwatches.forEach((button) => {
+    button.classList.toggle("is-selected", button.dataset.stripeColor?.toLowerCase() === secondaryFinishColor.toLowerCase());
+    button.disabled = !selection?.size || !hasSecondaryFinishColor;
+  });
+
+  const isShellBorderSelected = activeDecorations.includes(SHELL_BORDER_DECOR);
   if (shellBorderPlacementGroup) {
     shellBorderPlacementGroup.hidden = !isShellBorderSelected;
   }
+  const shellBorderColor = getDecorationColor(selection, SHELL_BORDER_DECOR);
+  if (shellBorderColorPreview) {
+    shellBorderColorPreview.hidden = !isShellBorderSelected;
+    shellBorderColorPreview.disabled = !selection?.size || !isShellBorderSelected;
+    shellBorderColorPreview.style.setProperty("--preview-color", shellBorderColor);
+  }
+  if (shellBorderColorInput) {
+    shellBorderColorInput.value = shellBorderColor;
+    shellBorderColorInput.disabled = !selection?.size || !isShellBorderSelected;
+  }
 
-  const shellEdge = selection?.shellBorderEdge || SHELL_BORDER_DEFAULT_EDGE;
+  const shellEdges = normalizeShellBorderEdges(selection || {});
   shellBorderEdgeButtons.forEach((button) => {
-    const isSelected = button.dataset.shellEdge === shellEdge;
+    const isSelected = shellEdges.includes(button.dataset.shellEdge);
     button.classList.toggle("is-selected", isSelected);
     button.setAttribute("aria-pressed", isSelected ? "true" : "false");
     button.disabled = !selection?.size || !isShellBorderSelected;
   });
 
-  const isSwirlsSelected = selection?.decor === SWIRL_DECOR;
+  const isSwagsSelected = activeDecorations.includes(SWAG_DECOR);
+  const isShellSwagSelected = activeDecorations.includes(SHELL_SWAG_DECOR);
+  const swagColor = getDecorationColor(selection, SWAG_DECOR);
+  const shellSwagColor = getDecorationColor(selection, SHELL_SWAG_DECOR);
+  if (swagsColorPreview) {
+    swagsColorPreview.hidden = !isSwagsSelected;
+    swagsColorPreview.disabled = !selection?.size || !isSwagsSelected;
+    swagsColorPreview.style.setProperty("--preview-color", swagColor);
+  }
+  if (shellSwagColorPreview) {
+    shellSwagColorPreview.hidden = !isShellSwagSelected;
+    shellSwagColorPreview.disabled = !selection?.size || !isShellSwagSelected;
+    shellSwagColorPreview.style.setProperty("--preview-color", shellSwagColor);
+  }
+  if (swagsColorInput) {
+    swagsColorInput.value = swagColor;
+    swagsColorInput.disabled = !selection?.size || !isSwagsSelected;
+  }
+  if (shellSwagColorInput) {
+    shellSwagColorInput.value = shellSwagColor;
+    shellSwagColorInput.disabled = !selection?.size || !isShellSwagSelected;
+  }
+  decorationColorSwatches.forEach((button) => {
+    const decorType = button.dataset.decorationColorTarget;
+    const targetColor = getDecorationColor(selection, decorType);
+    const isSelectedDecor = activeDecorations.includes(decorType);
+    button.classList.toggle("is-selected", button.dataset.decorationColor?.toLowerCase() === targetColor.toLowerCase());
+    button.disabled = !selection?.size || !isSelectedDecor;
+  });
+  if (!isSwagsSelected && swagsColorMenu && !swagsColorMenu.hidden) {
+    closeDecorColorPopups();
+  }
+  if (!isShellSwagSelected && shellSwagColorMenu && !shellSwagColorMenu.hidden) {
+    closeDecorColorPopups();
+  }
+  if (!isShellBorderSelected && shellBorderColorMenu && !shellBorderColorMenu.hidden) {
+    closeDecorColorPopups();
+  }
+
+  const isSwirlsSelected = activeDecorations.includes(SWIRL_DECOR);
+  const swirlColor = getDecorationColor(selection, SWIRL_DECOR);
+  if (swirlsColorPreview) {
+    swirlsColorPreview.hidden = !isSwirlsSelected;
+    swirlsColorPreview.disabled = !selection?.size || !isSwirlsSelected;
+    swirlsColorPreview.style.setProperty("--preview-color", swirlColor);
+  }
+  if (swirlsColorInput) {
+    swirlsColorInput.value = swirlColor;
+    swirlsColorInput.disabled = !selection?.size || !isSwirlsSelected;
+  }
+  if (!isSwirlsSelected && swirlsColorMenu && !swirlsColorMenu.hidden) {
+    closeDecorColorPopups();
+  }
   const hasCherries = isSwirlsSelected && selection?.cherries === true;
   if (cherryOptionButton) {
     cherryOptionButton.classList.toggle("is-selected", !!hasCherries);
@@ -7309,42 +9569,104 @@ decorToggle?.addEventListener("click", () => {
 
 edibleImageToggle?.addEventListener("click", () => {
   const isOpen = edibleImageToggle.getAttribute("aria-expanded") === "true";
-  setAccordionSection(isOpen ? "decor" : "edible-image");
+  const nextSection = isOpen ? "decor" : "edible-image";
+  setAccordionSection(nextSection);
+  if (nextSection === "edible-image") {
+    snapCustomizerCameraToView("top");
+  }
+});
+
+featuredDesignsToggle?.addEventListener("click", () => {
+  const isOpen = featuredDesignsToggle.getAttribute("aria-expanded") === "true";
+  setAccordionSection(isOpen ? "decor" : "featured-designs");
 });
 
 flavorToggle.addEventListener("click", () => {
   setAccordionSection("flavor");
 });
 
-edibleImageRequestedInput?.addEventListener("change", () => {
-  if (activeTierIndex === null || !selections[activeTierIndex]?.size) return;
+edibleImageClearButton?.addEventListener("click", () => {
+  const edibleIndex = getEdibleImageSelectionIndex();
+  if (edibleIndex === null || !selections[edibleIndex]?.size) return;
 
-  selections[activeTierIndex].edibleImage = edibleImageRequestedInput.checked;
+  clearEdibleImageUpload(selections[edibleIndex]);
+  if (edibleImageFileInput) edibleImageFileInput.value = "";
+  disposeEdibleImagePreview();
+  syncEdibleImageControls(activeTierIndex);
   syncDecorButtons(activeTierIndex);
   persistCustomizerState();
 });
 
 edibleImageFileInput?.addEventListener("change", () => {
-  if (activeTierIndex === null || !selections[activeTierIndex]?.size) return;
+  const edibleIndex = getEdibleImageSelectionIndex();
+  if (edibleIndex === null || !selections[edibleIndex]?.size) return;
 
-  const fileName = edibleImageFileInput.files?.[0]?.name || "";
-  selections[activeTierIndex].edibleImageFileName = fileName;
-  if (fileName) {
-    selections[activeTierIndex].edibleImage = true;
-  }
+  const file = edibleImageFileInput.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    selections[edibleIndex].edibleImage = true;
+    selections[edibleIndex].edibleImageFileName = file.name || "";
+    selections[edibleIndex].edibleImageDataUrl = String(reader.result || "");
+    selections[edibleIndex].edibleImageScale = DEFAULT_EDIBLE_IMAGE_SCALE;
+    selections[edibleIndex].edibleImageRadius = DEFAULT_EDIBLE_IMAGE_RADIUS;
+    selections[edibleIndex].edibleImageRotation = DEFAULT_EDIBLE_IMAGE_ROTATION;
+    selections[edibleIndex].edibleImageX = selections[edibleIndex].edibleImageX || 0;
+    selections[edibleIndex].edibleImageY = selections[edibleIndex].edibleImageY || 0;
+    syncEdibleImageControls(activeTierIndex);
+    syncDecorButtons(activeTierIndex);
+    void syncEdibleImagePreview();
+    snapCustomizerCameraToView("top");
+    persistCustomizerState();
+  });
+  reader.readAsDataURL(file);
+});
+
+edibleImageNotesInput?.addEventListener("input", () => {
+  const edibleIndex = getEdibleImageSelectionIndex();
+  if (edibleIndex === null || !selections[edibleIndex]?.size) return;
+
+  selections[edibleIndex].edibleImageNotes = edibleImageNotesInput.value || "";
   syncDecorButtons(activeTierIndex);
   persistCustomizerState();
 });
 
-edibleImageNotesInput?.addEventListener("input", () => {
-  if (activeTierIndex === null || !selections[activeTierIndex]?.size) return;
+function setEdibleImageTransformValue(field, value) {
+  const edibleIndex = getEdibleImageSelectionIndex();
+  const entry = getTopMainCakeEntry();
+  if (edibleIndex === null || !entry || !selections[edibleIndex]?.edibleImageDataUrl) return;
 
-  selections[activeTierIndex].edibleImageNotes = edibleImageNotesInput.value || "";
-  if (edibleImageNotesInput.value.trim()) {
-    selections[activeTierIndex].edibleImage = true;
-  }
+  selections[edibleIndex][field] = value;
+  selections[edibleIndex].edibleImage = true;
+  void syncEdibleImagePreview();
+  syncEdibleImageControls(activeTierIndex);
   syncDecorButtons(activeTierIndex);
   persistCustomizerState();
+}
+
+edibleImageRadiusInput?.addEventListener("input", () => {
+  setEdibleImageTransformValue("edibleImageRadius", Number(edibleImageRadiusInput.value) || DEFAULT_EDIBLE_IMAGE_RADIUS);
+});
+
+edibleImageScaleInput?.addEventListener("input", () => {
+  setEdibleImageTransformValue("edibleImageScale", Number(edibleImageScaleInput.value) || DEFAULT_EDIBLE_IMAGE_SCALE);
+});
+
+edibleImageRotationInput?.addEventListener("input", () => {
+  setEdibleImageTransformValue("edibleImageRotation", Number(edibleImageRotationInput.value) || DEFAULT_EDIBLE_IMAGE_ROTATION);
+});
+
+edibleImageRadiusResetButton?.addEventListener("click", () => {
+  setEdibleImageTransformValue("edibleImageRadius", DEFAULT_EDIBLE_IMAGE_RADIUS);
+});
+
+edibleImageScaleResetButton?.addEventListener("click", () => {
+  setEdibleImageTransformValue("edibleImageScale", DEFAULT_EDIBLE_IMAGE_SCALE);
+});
+
+edibleImageRotationResetButton?.addEventListener("click", () => {
+  setEdibleImageTransformValue("edibleImageRotation", DEFAULT_EDIBLE_IMAGE_ROTATION);
 });
 
 decorOptionButtons.forEach((button) => {
@@ -7356,7 +9678,7 @@ decorOptionButtons.forEach((button) => {
     } else if (button.dataset.decor === SWIRL_DECOR) {
       await toggleSwirls(activeTierIndex);
     } else {
-      selections[activeTierIndex].decor = button.dataset.decor || "";
+      toggleDecoration(selections[activeTierIndex], button.dataset.decor || "");
       await syncDecorForIndex(activeTierIndex);
     }
 
@@ -7378,9 +9700,7 @@ swirlQuantityButtons.forEach((button) => {
     if (activeTierIndex === null || !selections[activeTierIndex]?.size) return;
 
     selections[activeTierIndex].swirlCount = normalizeSwirlCount(button.dataset.swirlCount);
-    if (selections[activeTierIndex].decor !== SWIRL_DECOR) {
-      selections[activeTierIndex].decor = SWIRL_DECOR;
-    }
+    setDecorationActive(selections[activeTierIndex], SWIRL_DECOR, true);
 
     await updateSwirlDecor(activeTierIndex);
     syncDecorButtons(activeTierIndex);
@@ -7392,10 +9712,16 @@ shellBorderEdgeButtons.forEach((button) => {
   button.addEventListener("click", async () => {
     if (activeTierIndex === null || !selections[activeTierIndex]?.size) return;
 
-    selections[activeTierIndex].shellBorderEdge = button.dataset.shellEdge || SHELL_BORDER_DEFAULT_EDGE;
-    if (selections[activeTierIndex].decor !== SHELL_BORDER_DECOR) {
-      selections[activeTierIndex].decor = SHELL_BORDER_DECOR;
-    }
+    const selection = selections[activeTierIndex];
+    const shellEdge = button.dataset.shellEdge || SHELL_BORDER_DEFAULT_EDGE;
+    const currentEdges = normalizeShellBorderEdges(selection);
+    const nextEdges = currentEdges.includes(shellEdge)
+      ? currentEdges.filter((edge) => edge !== shellEdge)
+      : [...currentEdges, shellEdge];
+
+    selection.shellBorderEdges = nextEdges.length ? nextEdges : [shellEdge];
+    selection.shellBorderEdge = selection.shellBorderEdges[0] || SHELL_BORDER_DEFAULT_EDGE;
+    setDecorationActive(selection, SHELL_BORDER_DECOR, true);
 
     await syncDecorForIndex(activeTierIndex);
     syncDecorButtons(activeTierIndex);
@@ -7411,42 +9737,115 @@ outerFrostingSelect?.addEventListener("change", () => {
   if (outerFrostingSelect.value && !selections[targetIndex].outerFrostingColor) {
     selections[targetIndex].outerFrostingColor = DEFAULT_OUTER_FROSTING_COLOR;
   }
+  if (outerFrostingSelect.value === STRIPED_OUTER_FROSTING_DECOR && !selections[targetIndex].outerFrostingStripeColor) {
+    selections[targetIndex].outerFrostingStripeColor = DEFAULT_STRIPE_FROSTING_COLOR;
+  }
+  if (outerFrostingSelect.value === OMBRE_OUTER_FROSTING_DECOR && !selections[targetIndex].outerFrostingOmbreColor) {
+    selections[targetIndex].outerFrostingOmbreColor = DEFAULT_OMBRE_FROSTING_COLOR;
+  }
 
   syncDecorButtons(targetIndex);
   void syncOuterFrostingForIndex(targetIndex);
   void syncDecorForIndex(targetIndex);
   syncPeekToggleForIndex(targetIndex);
   persistCustomizerState();
+});
+
+outerFrostingColorPreview?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (outerFrostingColorPreview.disabled) return;
+  toggleDecorColorPopup("outer");
+});
+
+outerFrostingStripeColorPreview?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (outerFrostingStripeColorPreview.disabled) return;
+  toggleDecorColorPopup("stripe");
+});
+
+shellBorderColorPreview?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (shellBorderColorPreview.disabled) return;
+  toggleDecorColorPopup(SHELL_BORDER_DECOR);
+});
+
+swirlsColorPreview?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (swirlsColorPreview.disabled) return;
+  toggleDecorColorPopup(SWIRL_DECOR);
+});
+
+swagsColorPreview?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (swagsColorPreview.disabled) return;
+  toggleDecorColorPopup(SWAG_DECOR);
+});
+
+shellSwagColorPreview?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (shellSwagColorPreview.disabled) return;
+  toggleDecorColorPopup(SHELL_SWAG_DECOR);
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest?.(".decor-color-picker")) {
+    closeDecorColorPopups();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeDecorColorPopups();
+  }
 });
 
 decorColorSwatches.forEach((button) => {
   button.addEventListener("click", () => {
     const targetIndex = getDecorTargetIndex();
-    if (targetIndex === null) return;
-
-    selections[targetIndex].outerFrosting = OUTER_FROSTING_DECOR;
-    selections[targetIndex].outerFrostingColor = button.dataset.decorColor || DEFAULT_OUTER_FROSTING_COLOR;
-
-    syncDecorButtons(targetIndex);
-    void syncOuterFrostingForIndex(targetIndex);
-    void syncDecorForIndex(targetIndex);
-    syncPeekToggleForIndex(targetIndex);
-    persistCustomizerState();
+    applyOuterFrostingColorSelection(targetIndex, button.dataset.decorColor || DEFAULT_OUTER_FROSTING_COLOR);
+    closeDecorColorPopups();
   });
 });
 
 outerFrostingColorInput?.addEventListener("input", () => {
   const targetIndex = getDecorTargetIndex();
-  if (targetIndex === null) return;
+  applyOuterFrostingColorSelection(targetIndex, outerFrostingColorInput.value || DEFAULT_OUTER_FROSTING_COLOR);
+});
 
-  selections[targetIndex].outerFrosting = OUTER_FROSTING_DECOR;
-  selections[targetIndex].outerFrostingColor = outerFrostingColorInput.value || DEFAULT_OUTER_FROSTING_COLOR;
+decorationColorSwatches.forEach((button) => {
+  button.addEventListener("click", () => {
+    const targetIndex = getDecorTargetIndex();
+    applyDecorationColorSelection(
+      targetIndex,
+      button.dataset.decorationColorTarget,
+      button.dataset.decorationColor || DEFAULT_SHELL_FROSTING_COLOR
+    );
+    closeDecorColorPopups();
+  });
+});
 
-  syncDecorButtons(targetIndex);
-  void syncOuterFrostingForIndex(targetIndex);
-  void syncDecorForIndex(targetIndex);
-  syncPeekToggleForIndex(targetIndex);
-  persistCustomizerState();
+decorationColorInputs.forEach((input) => {
+  input.addEventListener("input", () => {
+    const targetIndex = getDecorTargetIndex();
+    applyDecorationColorSelection(
+      targetIndex,
+      input.dataset.decorationColorTarget,
+      input.value || DEFAULT_SHELL_FROSTING_COLOR
+    );
+  });
+});
+
+stripeColorSwatches.forEach((button) => {
+  button.addEventListener("click", () => {
+    const targetIndex = getDecorTargetIndex();
+    applySecondaryFinishColorSelection(targetIndex, button.dataset.stripeColor || DEFAULT_STRIPE_FROSTING_COLOR);
+    closeDecorColorPopups();
+  });
+});
+
+outerFrostingStripeColorInput?.addEventListener("input", () => {
+  const targetIndex = getDecorTargetIndex();
+  applySecondaryFinishColorSelection(targetIndex, outerFrostingStripeColorInput.value || DEFAULT_STRIPE_FROSTING_COLOR);
 });
 
 extraBackupToggle.addEventListener("click", () => {
@@ -7475,14 +9874,20 @@ extraBackupSizeButtons.forEach((button) => {
         filling: "",
         signature: "",
         decor: "",
+        decorations: [],
         shellBorderEdge: SHELL_BORDER_DEFAULT_EDGE,
+        shellBorderEdges: [SHELL_BORDER_DEFAULT_EDGE],
+        shellBorderColor: DEFAULT_SHELL_FROSTING_COLOR,
         swirlCount: DEFAULT_SWIRL_COUNT,
+        swirlColor: DEFAULT_SHELL_FROSTING_COLOR,
+        swagColor: DEFAULT_SHELL_FROSTING_COLOR,
+        shellSwagColor: DEFAULT_SHELL_FROSTING_COLOR,
         cherries: false,
         outerFrosting: "",
         outerFrostingColor: DEFAULT_OUTER_FROSTING_COLOR,
-        edibleImage: false,
-        edibleImageFileName: "",
-        edibleImageNotes: ""
+        outerFrostingStripeColor: DEFAULT_STRIPE_FROSTING_COLOR,
+        outerFrostingOmbreColor: DEFAULT_OMBRE_FROSTING_COLOR,
+        ...getDefaultEdibleImageSettings()
       };
 
       selections.push(newCupcakeSelection);
@@ -7527,14 +9932,20 @@ extraBackupSizeButtons.forEach((button) => {
     filling: "",
     signature: "",
     decor: "",
+    decorations: [],
     shellBorderEdge: SHELL_BORDER_DEFAULT_EDGE,
+    shellBorderEdges: [SHELL_BORDER_DEFAULT_EDGE],
+    shellBorderColor: DEFAULT_SHELL_FROSTING_COLOR,
     swirlCount: DEFAULT_SWIRL_COUNT,
+    swirlColor: DEFAULT_SHELL_FROSTING_COLOR,
+    swagColor: DEFAULT_SHELL_FROSTING_COLOR,
+    shellSwagColor: DEFAULT_SHELL_FROSTING_COLOR,
     cherries: false,
     outerFrosting: "",
     outerFrostingColor: DEFAULT_OUTER_FROSTING_COLOR,
-    edibleImage: false,
-    edibleImageFileName: "",
-    edibleImageNotes: ""
+    outerFrostingStripeColor: DEFAULT_STRIPE_FROSTING_COLOR,
+    outerFrostingOmbreColor: DEFAULT_OMBRE_FROSTING_COLOR,
+    ...getDefaultEdibleImageSettings()
   };
 
   selections.push(newSelection);
@@ -7716,6 +10127,12 @@ orderTab?.addEventListener("click", () => {
 const savedAppState = getSavedAppState();
 if (savedAppState?.guests && ["recommendations", "customizer", "decor", "summary", "fulfillment"].includes(savedAppState.view)) {
   initializeCakeFlow(Number(savedAppState.guests), savedAppState);
+} else if (savedAppState?.view === "display-case") {
+  openDisplayCasePage();
+} else if (savedAppState?.view === "menu") {
+  openMenuPage();
+} else if (savedAppState?.view === "gingerbread") {
+  openGingerbreadPage();
 } else if (!document.body.classList.contains("customizer-active")) {
   showLandingPageView();
 }
@@ -7724,4 +10141,5 @@ siteLogo?.addEventListener("click", () => {
   returnToLandingPage();
 });
 
+void initPasswordGateCake();
 initLandingHero();
