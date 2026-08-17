@@ -9,6 +9,9 @@ const guestCountInput = document.getElementById("guest-count");
 const calculateButton = document.getElementById("calculate-btn");
 const calculatorForm = document.querySelector(".calculator-search-row");
 const calculatorUi = document.getElementById("calculator-ui");
+const servingsSlider = document.getElementById("servings-slider");
+const priceSlider = document.getElementById("price-slider");
+const priceSliderValue = document.getElementById("price-slider-value");
 const heroRecommendationMeta = document.getElementById("hero-recommendation-meta");
 const heroRecommendationLabel = document.getElementById("hero-recommendation-label");
 const heroCustomizeButton = document.getElementById("hero-customize-btn");
@@ -22,11 +25,20 @@ const displayCaseDailyCakes = document.getElementById("display-case-daily-cakes"
 const displayCaseDailyInfo = document.getElementById("display-case-daily-info");
 const recommendationsPage = document.getElementById("recommendations-page");
 const recommendationsBackButton = document.getElementById("recommendations-back-btn");
+const homePage = document.getElementById("home-page");
 const siteLogo = document.getElementById("site-logo");
 const menuTab = document.getElementById("menu-tab");
 const gingerbreadTab = document.getElementById("gingerbread-tab");
 const displayCaseTab = document.getElementById("display-case-tab");
 const orderTab = document.getElementById("order-tab");
+const howToOrderStage = document.querySelector(".how-to-order-stage");
+const howToOrderSticky = document.querySelector(".how-to-order-sticky");
+const howToOrderVisualStage = document.querySelector(".how-to-order-visual-stage");
+const howToOrderStepNumber = document.getElementById("how-to-order-step-number");
+const howToOrderStepTitle = document.getElementById("how-to-order-step-title");
+const howToOrderStepCopy = document.getElementById("how-to-order-step-copy");
+const howToOrderServingCount = document.getElementById("how-to-order-serving-count");
+const howToOrderCake3D = document.getElementById("how-to-order-cake-3d");
 const queryParams = new URLSearchParams(window.location.search);
 const isDevMode = queryParams.get("dev") === "1";
 const APP_STATE_KEY = "cake-supply-app-state";
@@ -39,7 +51,47 @@ let activeHeroRecommendation = null;
 const HERO_SHARED_TRANSITION_MS = 720;
 let menuPreviewObserver = null;
 let displayCaseMidnightTimer = null;
+let howToOrderScrollTicking = false;
+const HOW_TO_ORDER_CAKE_MIN_SCALE = 1.28;
+const HOW_TO_ORDER_CAKE_MAX_SCALE = 2.16;
+const HOW_TO_ORDER_CAKE_FINAL_CENTER_Y = 0.36;
+const HOW_TO_ORDER_DELIVERY_RECEDES_Z = -0.18;
+const HOW_TO_ORDER_DELIVERY_LIFT_Y = 0.08;
+const HOW_TO_ORDER_FLAVOR_SEQUENCE = [
+  { size: 6, flavorSlug: "blueberry-cheesecake" },
+  { size: 8, flavorSlug: "raspberry-chocolate-mousse" },
+  { size: 10, flavorSlug: "red-velvet" }
+];
+const HOW_TO_ORDER_DECOR_SEQUENCE = [10, 8, 6];
+const HOW_TO_ORDER_WHITE_FROSTING_COLOR = "#fffdf4";
+const HOW_TO_ORDER_OUTER_FROSTING_SCALE = 1.015;
+const HOW_TO_ORDER_FROSTING_PHASE_END = 0.72;
+const HOW_TO_ORDER_DECOR_APPEAR_START = 0.78;
+const HOW_TO_ORDER_SHELL_BORDER_SCALE = 0.9;
+const HOW_TO_ORDER_STAND_MODEL_SRC = "decoration/stand1.glb";
+const HOW_TO_ORDER_STAND_SCALE = 0.075;
+let howToOrderCakeScene = null;
+let howToOrderCakeCamera = null;
+let howToOrderCakeRenderer = null;
+let howToOrderCakeGroup = null;
+let howToOrderCakeStand = null;
+let howToOrderCakeStandTopY = 0;
+let howToOrderCakeEntries = [];
+let howToOrderCakeStackHeight = 0;
+let howToOrderCakeOnlyOffsetY = 0;
+let howToOrderCakeDeliveryOffsetY = 0;
+let howToOrderCakeOnlyPositionZ = 0;
+let howToOrderCakeReady = false;
+let howToOrderCakeProgress = 0;
+let howToOrderFlavorProgress = 0;
+let howToOrderDecorProgress = 0;
+let howToOrderDeliveryProgress = 0;
+let howToOrderStageHasRevealed = false;
+let howToOrderStageRevealStarted = false;
 let displayCasePreviewCleanups = [];
+let selectedRecommendationBudget = null;
+let recommendationBudgetWasManuallySelected = false;
+let liveRecommendationFrame = null;
 
 const CAKE_LIGHTING = {
   key: 2.65,
@@ -333,6 +385,41 @@ function setSavedAppState(state) {
   }
 }
 
+function showHomePageView() {
+  teardownMenuPreviewObserver();
+  if (homePage) {
+    homePage.hidden = false;
+    homePage.style.display = "block";
+  }
+  if (landingPage) landingPage.style.display = "none";
+  if (menuPage) {
+    menuPage.style.display = "none";
+    menuPage.hidden = true;
+  }
+  if (galleryPage) {
+    galleryPage.style.display = "none";
+    galleryPage.hidden = true;
+  }
+  if (displayCasePage) {
+    displayCasePage.style.display = "none";
+    displayCasePage.hidden = true;
+  }
+  if (recommendationsPage) recommendationsPage.style.display = "";
+  document.body.classList.add("home-active");
+  document.body.classList.remove("order-active");
+  document.body.classList.remove("results-active");
+  document.body.classList.remove("menu-active");
+  document.body.classList.remove("gallery-active");
+  document.body.classList.remove("display-case-active");
+  document.body.classList.remove("customizer-active");
+  document.body.classList.remove("results-transitioning");
+  if (heroRecommendationMeta) {
+    heroRecommendationMeta.setAttribute("aria-hidden", "true");
+  }
+  const customizerEl = document.getElementById("customizer");
+  if (customizerEl) customizerEl.style.display = "none";
+}
+
 function showLandingPageView({ force = false } = {}) {
   const customizerEl = document.getElementById("customizer");
   if (!force && document.body.classList.contains("customizer-active") && customizerEl?.style.display === "block") {
@@ -343,6 +430,10 @@ function showLandingPageView({ force = false } = {}) {
   }
 
   teardownMenuPreviewObserver();
+  if (homePage) {
+    homePage.style.display = "none";
+    homePage.hidden = true;
+  }
   if (landingPage) landingPage.style.display = "block";
   if (menuPage) {
     menuPage.style.display = "none";
@@ -357,6 +448,8 @@ function showLandingPageView({ force = false } = {}) {
     displayCasePage.hidden = true;
   }
   if (recommendationsPage) recommendationsPage.style.display = "";
+  document.body.classList.add("order-active");
+  document.body.classList.remove("home-active");
   document.body.classList.remove("results-active");
   document.body.classList.remove("menu-active");
   document.body.classList.remove("gallery-active");
@@ -371,6 +464,10 @@ function showLandingPageView({ force = false } = {}) {
 
 function showRecommendationsPageView() {
   teardownMenuPreviewObserver();
+  if (homePage) {
+    homePage.style.display = "none";
+    homePage.hidden = true;
+  }
   if (landingPage) landingPage.style.display = "block";
   if (menuPage) {
     menuPage.style.display = "none";
@@ -386,6 +483,8 @@ function showRecommendationsPageView() {
   }
   if (recommendationsPage) recommendationsPage.style.display = "";
   document.body.classList.add("results-active");
+  document.body.classList.remove("home-active");
+  document.body.classList.remove("order-active");
   document.body.classList.remove("menu-active");
   document.body.classList.remove("gallery-active");
   document.body.classList.remove("display-case-active");
@@ -402,7 +501,13 @@ function showCustomizerPageView() {
   document.body.classList.remove("results-active");
   document.body.classList.remove("menu-active");
   document.body.classList.remove("gallery-active");
+  document.body.classList.remove("home-active");
+  document.body.classList.remove("order-active");
   document.body.classList.add("customizer-active");
+  if (homePage) {
+    homePage.style.display = "none";
+    homePage.hidden = true;
+  }
   if (landingPage) landingPage.style.display = "none";
   if (menuPage) {
     menuPage.style.display = "none";
@@ -422,6 +527,10 @@ function showCustomizerPageView() {
 }
 
 function showMenuPageView() {
+  if (homePage) {
+    homePage.style.display = "none";
+    homePage.hidden = true;
+  }
   if (landingPage) landingPage.style.display = "none";
   if (menuPage) {
     menuPage.hidden = false;
@@ -437,6 +546,8 @@ function showMenuPageView() {
   }
   if (recommendationsPage) recommendationsPage.style.display = "";
   document.body.classList.remove("results-active");
+  document.body.classList.remove("home-active");
+  document.body.classList.remove("order-active");
   document.body.classList.remove("customizer-active");
   document.body.classList.remove("results-transitioning");
   document.body.classList.remove("gallery-active");
@@ -448,6 +559,10 @@ function showMenuPageView() {
 
 function showGalleryPageView() {
   teardownMenuPreviewObserver();
+  if (homePage) {
+    homePage.style.display = "none";
+    homePage.hidden = true;
+  }
   if (landingPage) landingPage.style.display = "none";
   if (menuPage) {
     menuPage.style.display = "none";
@@ -463,6 +578,8 @@ function showGalleryPageView() {
   }
   if (recommendationsPage) recommendationsPage.style.display = "";
   document.body.classList.remove("results-active");
+  document.body.classList.remove("home-active");
+  document.body.classList.remove("order-active");
   document.body.classList.remove("customizer-active");
   document.body.classList.remove("menu-active");
   document.body.classList.remove("display-case-active");
@@ -474,6 +591,10 @@ function showGalleryPageView() {
 
 function showDisplayCasePageView() {
   teardownMenuPreviewObserver();
+  if (homePage) {
+    homePage.style.display = "none";
+    homePage.hidden = true;
+  }
   if (landingPage) landingPage.style.display = "none";
   if (menuPage) {
     menuPage.style.display = "none";
@@ -489,6 +610,8 @@ function showDisplayCasePageView() {
   }
   if (recommendationsPage) recommendationsPage.style.display = "";
   document.body.classList.remove("results-active");
+  document.body.classList.remove("home-active");
+  document.body.classList.remove("order-active");
   document.body.classList.remove("customizer-active");
   document.body.classList.remove("menu-active");
   document.body.classList.remove("gallery-active");
@@ -522,7 +645,24 @@ function returnToLandingPage() {
   });
   setSavedAppState({
     guests: null,
-    view: "landing",
+    view: "order",
+    recommendation: null,
+    customizerState: null
+  });
+}
+
+function openHomePage() {
+  debouncedLandingHeroPreviewUpdate.cancel();
+  if (guestCountInput) {
+    guestCountInput.value = "";
+  }
+  activeHeroRecommendation = null;
+  pendingLandingHeroTierSizes = null;
+  landingHeroUsesBlankPreview = false;
+  showHomePageView();
+  setSavedAppState({
+    guests: null,
+    view: "home",
     recommendation: null,
     customizerState: null
   });
@@ -2237,7 +2377,7 @@ const menuSignatureFlavors = {
   "white-chocolate-raspberry": { cake: "Vanilla", frosting: "White Chocolate Ganache", filling: "Raspberry Puree" },
   "pancake": { cake: "Vanilla", frosting: "White Chocolate Ganache", filling: "Vanilla Custard" },
   "zebra": { cake: "Marble", frosting: "Raspberry Buttercream", filling: "Blackberry Puree" },
-  "red-velvet": { cake: "Marble", frosting: "White Chocolate Ganache", filling: "" },
+  "red-velvet": { cake: "Red Velvet", frosting: "White Chocolate Ganache", filling: "" },
   "original-chocolate": { cake: "Chocolate", frosting: "Chocolate Mousse", filling: "" },
   "tuxedo": { cake: "Chocolate", frosting: "Chocolate Mousse", filling: "White Chocolate Ganache" },
   "raspberry-chocolate-mousse": { cake: "Chocolate", frosting: "Chocolate Mousse", filling: "Raspberry Puree" },
@@ -5936,13 +6076,13 @@ async function buildRecommendationCake3D(scene, mainSizes, backupSize = null, si
   return group;
 }
 
-function initializeCakeFlow(guests, restoredState = null) {
+function initializeCakeFlow(guests, restoredState = null, options = {}) {
   if (!Number.isFinite(guests) || guests <= 0) return;
 
   const previewRecommendation = getNearestPreviewRecommendationForGuests(guests);
   const heroSnapshot = getHeroPreviewTransitionSnapshot();
 
-  const shouldAnimateRecommendationEntry = !restoredState;
+  const shouldAnimateRecommendationEntry = !restoredState && !options.liveUpdate;
   if (shouldAnimateRecommendationEntry) {
     document.body.classList.add("recommendations-entering");
   }
@@ -6179,40 +6319,21 @@ function getCupcakeSupplementScore(gap, cupcakeCount) {
   return overage + 2 + smallGapCredit;
 }
 
+function getTieredDisplayScoreAdjustment(tierOption, guests) {
+  const tierCount = tierOption.tiers.length;
+  const smallestTier = Math.min(...tierOption.tiers);
+  let score = 0;
+
+  if (guests < 60 && tierCount > 2) score += 2;
+  if (guests > 40 && smallestTier < 8 && smallestTier !== 6) score += 10;
+  if (tierOption.tiers.includes(6)) score -= 3;
+  if (tierCount === 3) score -= 2;
+
+  return score;
+}
+
 function buildCupcakeRecommendations(guests) {
   const cupcakeRecommendations = [];
-  const standaloneCupcakes = getCupcakeQuantityForServings(guests, CUPCAKE_MAX_STANDALONE);
-
-  if (standaloneCupcakes) {
-    cupcakeRecommendations.push({
-      name: `${standaloneCupcakes} Cupcakes`,
-      servings: standaloneCupcakes,
-      type: "cupcakes",
-      cupcakeCount: standaloneCupcakes,
-      score: (standaloneCupcakes - guests) + 8
-    });
-  }
-
-  cakeOptions.forEach((cake) => {
-    if (cake.type !== "round") return;
-    if (cake.servings >= guests) return;
-
-    const gap = guests - cake.servings;
-    const cupcakeCount = getCupcakeQuantityForServings(gap, CUPCAKE_MAX_SUPPLEMENT);
-    if (!cupcakeCount) return;
-
-    const totalServings = cake.servings + cupcakeCount;
-    const undersizedMainPenalty = guests > 40 && cake.size < 10 ? 8 : 0;
-
-    cupcakeRecommendations.push({
-      name: `${cake.size}" Round + ${cupcakeCount} Cupcakes`,
-      servings: totalServings,
-      type: "single-cupcakes",
-      roundSize: cake.size,
-      cupcakeCount,
-      score: getCupcakeSupplementScore(gap, cupcakeCount) + undersizedMainPenalty
-    });
-  });
 
   tieredOptions.forEach((tierOption) => {
     if (tierOption.servings >= guests) return;
@@ -6221,19 +6342,14 @@ function buildCupcakeRecommendations(guests) {
     const cupcakeCount = getCupcakeQuantityForServings(gap, CUPCAKE_MAX_SUPPLEMENT);
     if (!cupcakeCount) return;
 
-    const tierCount = tierOption.tiers.length;
-    const smallestTier = Math.min(...tierOption.tiers);
     let score = getCupcakeSupplementScore(gap, cupcakeCount);
-
-    if (guests < 60 && tierCount > 2) score += 2;
-    if (guests > 40 && smallestTier < 8 && smallestTier !== 6) score += 10;
-    if (tierOption.tiers.includes(6)) score -= 3;
-    if (tierCount === 3) score -= 2;
+    score += getTieredDisplayScoreAdjustment(tierOption, guests);
 
     cupcakeRecommendations.push({
       name: `${getTieredRecommendationName(tierOption.tiers)} + ${cupcakeCount} Cupcakes`,
       servings: tierOption.servings + cupcakeCount,
       type: "tiered-cupcakes",
+      supplementalStrategy: "cupcakes",
       tierSizes: tierOption.tiers.slice(),
       cupcakeCount,
       score
@@ -6296,6 +6412,66 @@ function getBasePrice(recommendation) {
   return 0;
 }
 
+function getRecommendationPriceRange(recommendationList) {
+  const prices = recommendationList
+    .map((recommendation) => getBasePrice(recommendation))
+    .filter((price) => Number.isFinite(price) && price > 0);
+
+  if (!prices.length) return { min: 0, max: 0 };
+
+  return {
+    min: Math.floor(Math.min(...prices) / 5) * 5,
+    max: Math.ceil(Math.max(...prices) / 5) * 5
+  };
+}
+
+function getRecommendationMedianPrice(recommendationList, priceRange) {
+  const prices = recommendationList
+    .map((recommendation) => getBasePrice(recommendation))
+    .filter((price) => Number.isFinite(price) && price > 0)
+    .sort((a, b) => a - b);
+
+  if (!prices.length) {
+    return (priceRange.min + priceRange.max) / 2;
+  }
+
+  const middleIndex = Math.floor(prices.length / 2);
+  const median = prices.length % 2
+    ? prices[middleIndex]
+    : (prices[middleIndex - 1] + prices[middleIndex]) / 2;
+
+  return Math.round(median / 5) * 5;
+}
+
+function syncRecommendationControls(guests, priceRange, fallbackBudget) {
+  const clampedGuests = Math.min(250, Math.max(10, Math.round(guests)));
+
+  if (guestCountInput && guestCountInput.value !== String(clampedGuests)) {
+    guestCountInput.value = clampedGuests;
+  }
+
+  if (servingsSlider && servingsSlider.value !== String(clampedGuests)) {
+    servingsSlider.value = clampedGuests;
+  }
+
+  if (!priceSlider || !priceSliderValue) return;
+
+  priceSlider.min = priceRange.min;
+  priceSlider.max = priceRange.max;
+
+  if (!recommendationBudgetWasManuallySelected || !Number.isFinite(selectedRecommendationBudget)) {
+    selectedRecommendationBudget = fallbackBudget;
+  }
+
+  selectedRecommendationBudget = Math.min(
+    priceRange.max,
+    Math.max(priceRange.min, Math.round(selectedRecommendationBudget / 5) * 5)
+  );
+
+  priceSlider.value = selectedRecommendationBudget;
+  priceSliderValue.textContent = formatPrice(selectedRecommendationBudget);
+}
+
 function calculateCustomizationPrice(selections) {
   let total = 0;
 
@@ -6310,61 +6486,14 @@ function calculateCustomizationPrice(selections) {
 
 let recommendations = [];
 
-// SINGLE CAKES
-for (let i = 0; i < cakeOptions.length; i++) {
-  let cake = cakeOptions[i];
-
-  if (cake.type !== "round") continue;
-  if (cake.servings < guests) continue;
-
-  let excess = cake.servings - guests;
-
-  recommendations.push({
-  name: cake.name,
-  servings: cake.servings,
-  type: "single",
-  score: excess - 7
-});
-}
-
-// SINGLE SHEET CAKES
-for (let i = 0; i < cakeOptions.length; i++) {
-  let cake = cakeOptions[i];
-
-  if (cake.type !== "sheet") continue;
-  if (cake.servings < guests) continue;
-
-  let excess = cake.servings - guests;
-
-  recommendations.push({
-    name: cake.name,
-    servings: cake.servings,
-    type: "single-sheet",
-    score: excess + 5
-  });
-}
-
 // TIERED CAKES
 for (let i = 0; i < tieredOptions.length; i++) {
   let tier = tieredOptions[i];
 
   if (tier.servings < guests) continue;
 
-  let excess = tier.servings - guests;
-  let tierCount = tier.tiers.length;
-  let smallestTier = Math.min(...tier.tiers);
-
-  if (guests < 60 && tierCount > 2) {
-    excess += 2;
-  }
-
-  if (guests > 40 && smallestTier < 8) {
-  if (smallestTier === 6) {
-    excess += 0;
-  } else {
-    excess += 10;
-  }
-}
+  let score = tier.servings - guests;
+  score += getTieredDisplayScoreAdjustment(tier, guests);
 
   let tierNames = tier.tiers
     .slice()
@@ -6376,7 +6505,8 @@ for (let i = 0; i < tieredOptions.length; i++) {
     name: `${tierNames} tiered cake`,
     servings: tier.servings,
     type: "tiered",
-    score: excess
+    supplementalStrategy: "none",
+    score
   });
 }
 // TIERED + ROUND BACKUP
@@ -6384,6 +6514,8 @@ for (let i = 0; i < tieredOptions.length; i++) {
   let tier = tieredOptions[i];
   let tierCount = tier.tiers.length;
   let smallestTier = Math.min(...tier.tiers);
+
+  if (tier.servings >= guests) continue;
 
   // keep your aesthetic rules
   if (guests < 60 && tierCount > 2) continue;
@@ -6399,20 +6531,11 @@ for (let i = 0; i < tieredOptions.length; i++) {
 
   let excess = totalServings - guests;
 let score = excess;
+score += getTieredDisplayScoreAdjustment(tier, guests);
 
 // discourage tiered + backup for small events
 if (guests <= 35) {
   score += 20;
-}
-
-// prefer a 6" top tier
-if (tier.tiers.includes(6)) {
-  score -= 3;
-}
-
-// prefer fuller / taller display cakes
-if (tierCount === 3) {
-  score -= 2;
 }
 
 // prefer smaller kitchen backup cakes
@@ -6432,41 +6555,31 @@ recommendations.push({
   name: `${tierNames} tiered cake + ${backupCake.name}`,
   servings: totalServings,
   type: "tiered-round-backup",
+  supplementalStrategy: "backup",
+  tierSizes: tier.tiers.slice(),
+  backupSize: backupCake.size,
   score: score
 });
 }
-}
-// ROUND + SHEET COMBINATIONS
-for (let i = 0; i < cakeOptions.length; i++) {
-  let cakeA = cakeOptions[i];
-  if (cakeA.type !== "round") continue;
-
-  // bigger events should not feature tiny main cakes
-  if (guests > 50 && cakeA.size < 10) continue;
-  if (guests > 70 && cakeA.size < 12) continue;
-
-  for (let j = 0; j < cakeOptions.length; j++) {
-    let cakeB = cakeOptions[j];
-    if (cakeB.type !== "sheet") continue;
-
-    let totalServings = cakeA.servings + cakeB.servings;
-    if (totalServings < guests) continue;
-
-    let excess = totalServings - guests;
-
-    recommendations.push({
-      name: `${cakeA.name} + ${cakeB.name}`,
-      servings: totalServings,
-      type: "sheet-combo",
-      score: excess + 35
-    });
-  }
 }
 
 recommendations.push(...buildCupcakeRecommendations(guests));
 
 // SORT BEST TO WORST
 recommendations.sort((a, b) => a.score - b.score);
+
+const recommendationPriceRange = getRecommendationPriceRange(recommendations);
+const defaultBudget = getRecommendationMedianPrice(recommendations, recommendationPriceRange);
+syncRecommendationControls(guests, recommendationPriceRange, defaultBudget);
+
+if (Number.isFinite(selectedRecommendationBudget)) {
+  recommendations.forEach((recommendation) => {
+    const budgetDistance = Math.abs(getBasePrice(recommendation) - selectedRecommendationBudget);
+    recommendation.score += budgetDistance / 5;
+  });
+
+  recommendations.sort((a, b) => a.score - b.score);
+}
 
 // REMOVE DUPLICATES
 let uniqueRecommendations = [];
@@ -10088,16 +10201,657 @@ function updateLandingHeroPreviewFromInput() {
   setLandingHeroTierConfiguration(pendingLandingHeroTierSizes);
 }
 
+function getClampedRecommendationGuests(value) {
+  const parsedGuests = parseGuestCountValue(value);
+  if (!parsedGuests) return null;
+  return Math.min(250, Math.max(10, parsedGuests));
+}
+
+function scheduleLiveRecommendationUpdate() {
+  if (!document.body.classList.contains("results-active")) return;
+
+  const guests = getClampedRecommendationGuests(guestCountInput?.value ?? "");
+  if (!guests) return;
+
+  if (liveRecommendationFrame) {
+    cancelAnimationFrame(liveRecommendationFrame);
+  }
+
+  liveRecommendationFrame = requestAnimationFrame(() => {
+    liveRecommendationFrame = null;
+    initializeCakeFlow(guests, null, { liveUpdate: true });
+  });
+}
+
 const debouncedLandingHeroPreviewUpdate = debounce(updateLandingHeroPreviewFromInput, LIVE_PREVIEW_DEBOUNCE_MS);
 
 guestCountInput?.addEventListener("input", () => {
+  const guests = getClampedRecommendationGuests(guestCountInput.value);
+  if (guests && servingsSlider && servingsSlider.value !== String(guests)) {
+    servingsSlider.value = guests;
+  }
+
+  if (document.body.classList.contains("results-active")) {
+    scheduleLiveRecommendationUpdate();
+    return;
+  }
+
   debouncedLandingHeroPreviewUpdate();
 });
+
+servingsSlider?.addEventListener("input", () => {
+  if (guestCountInput) {
+    guestCountInput.value = servingsSlider.value;
+  }
+
+  if (document.body.classList.contains("results-active")) {
+    scheduleLiveRecommendationUpdate();
+    return;
+  }
+
+  debouncedLandingHeroPreviewUpdate();
+});
+
+priceSlider?.addEventListener("input", () => {
+  recommendationBudgetWasManuallySelected = true;
+  selectedRecommendationBudget = Number(priceSlider.value);
+
+  if (priceSliderValue) {
+    priceSliderValue.textContent = formatPrice(selectedRecommendationBudget);
+  }
+
+  scheduleLiveRecommendationUpdate();
+});
+
+const HOW_TO_ORDER_STEPS = [
+  {
+    title: "Cake Size",
+    copy: "How many people are you serving?",
+  },
+  {
+    title: "Flavor",
+    copy: "Move through flavor, filling, and frosting choices.",
+  },
+  {
+    title: "Decorate",
+    copy: "Layer in color, piping, and finishing details.",
+  },
+  {
+    title: "Delivery",
+    copy: "Review the completed cake and prepare the order details.",
+  },
+];
+
+function clamp01(value) {
+  return Math.min(Math.max(value, 0), 1);
+}
+
+function lerp(start, end, progress) {
+  return start + (end - start) * progress;
+}
+
+function setHowToOrderTierOpacity(object, opacity) {
+  object.visible = opacity > 0.01;
+
+  object.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      material.transparent = opacity < 0.999;
+      material.opacity = opacity;
+      material.depthWrite = opacity > 0.92;
+    });
+  });
+}
+
+function renderHowToOrderCakeScene() {
+  if (!howToOrderCakeRenderer || !howToOrderCakeScene || !howToOrderCakeCamera) return;
+  howToOrderCakeRenderer.render(howToOrderCakeScene, howToOrderCakeCamera);
+}
+
+function resizeHowToOrderCakeScene() {
+  if (!howToOrderCake3D || !howToOrderCakeRenderer || !howToOrderCakeCamera) return;
+
+  const width = howToOrderCake3D.clientWidth || 520;
+  const height = howToOrderCake3D.clientHeight || 360;
+  howToOrderCakeCamera.aspect = width / height;
+  howToOrderCakeCamera.updateProjectionMatrix();
+  howToOrderCakeRenderer.setSize(width, height);
+  renderHowToOrderCakeScene();
+}
+
+function getHowToOrderTierBounds(object) {
+  const box = new THREE.Box3().setFromObject(object);
+
+  return {
+    minY: box.min.y,
+    maxY: box.max.y,
+    height: box.max.y - box.min.y
+  };
+}
+
+function getHowToOrderFinalCenteredOffset() {
+  return howToOrderCakeOnlyOffsetY;
+}
+
+function getHowToOrderCenteredOffsetForBounds(bounds, scale = HOW_TO_ORDER_CAKE_MAX_SCALE) {
+  if (!bounds || bounds.isEmpty()) return 0;
+
+  return HOW_TO_ORDER_CAKE_FINAL_CENTER_Y - ((bounds.min.y + bounds.max.y) / 2) * scale;
+}
+
+function getHowToOrderFlavorColorSet(flavorSlug) {
+  const selection = menuSignatureFlavors[flavorSlug] || {};
+  const colors = getTierColorSelections({
+    flavor: selection.cake,
+    frosting: selection.frosting,
+    filling: selection.filling
+  });
+
+  return {
+    cake: colorToThree(colors.cake),
+    frosting: colorToThree(colors.frosting),
+    filling: colors.filling ? colorToThree(colors.filling) : null
+  };
+}
+
+function getHowToOrderMaterialStates(object) {
+  const states = [];
+
+  object.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      const role = material.userData?.role;
+      if (!role || role === "liner" || !material.color) return;
+
+      states.push({
+        material,
+        role,
+        baseColor: material.color.clone(),
+        baseOpacity: material.opacity ?? 1
+      });
+    });
+  });
+
+  return states;
+}
+
+function applyHowToOrderTierFlavorProgress(entry, progress) {
+  if (!entry.materialStates?.length || !entry.flavorColors) return;
+
+  const easedProgress = progress * progress * (3 - 2 * progress);
+  const revealOpacity = entry.revealOpacity ?? 1;
+
+  entry.materialStates.forEach((state) => {
+    const targetColor = entry.flavorColors[state.role];
+    const targetOpacity = state.role === "filling" && !targetColor ? 0 : 1;
+    const flavorOpacity = lerp(state.baseOpacity, targetOpacity, easedProgress);
+
+    state.material.transparent = revealOpacity < 0.999 || flavorOpacity < 0.999;
+    state.material.opacity = flavorOpacity * revealOpacity;
+    state.material.depthWrite = state.material.opacity > 0.92;
+    state.material.needsUpdate = true;
+
+    if (targetColor) {
+      state.material.color.copy(state.baseColor).lerp(targetColor, easedProgress);
+    }
+  });
+}
+
+function applyHowToOrderFlavorProgress(progress) {
+  howToOrderFlavorProgress = clamp01(progress);
+  if (!howToOrderCakeReady || !howToOrderCakeEntries.length) return;
+
+  HOW_TO_ORDER_FLAVOR_SEQUENCE.forEach((flavorStep, index) => {
+    const entry = howToOrderCakeEntries.find((tierEntry) => tierEntry.size === flavorStep.size);
+    if (!entry) return;
+
+    const tierProgress = clamp01((howToOrderFlavorProgress * HOW_TO_ORDER_FLAVOR_SEQUENCE.length) - index);
+    applyHowToOrderTierFlavorProgress(entry, tierProgress);
+  });
+
+  renderHowToOrderCakeScene();
+}
+
+function setHowToOrderOuterFrostingOpacity(object, opacity) {
+  if (!object) return;
+
+  object.visible = opacity > 0.01;
+  object.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      material.transparent = opacity < 0.999;
+      material.opacity = opacity;
+      material.depthWrite = opacity > 0.92;
+      material.needsUpdate = true;
+    });
+  });
+}
+
+function getHowToOrderTierLocalEdgeY(entry, edge = SHELL_BORDER_DEFAULT_EDGE) {
+  entry.object.updateWorldMatrix(true, true);
+
+  const box = new THREE.Box3().setFromObject(entry.object);
+  const worldY = edge === "bottom" ? box.min.y : box.max.y;
+  const localPoint = entry.object.worldToLocal(new THREE.Vector3(0, worldY, 0));
+
+  return localPoint.y + (edge === "bottom" ? SHELL_BORDER_BOTTOM_Y_OFFSET : SHELL_BORDER_TOP_Y_OFFSET);
+}
+
+function setHowToOrderDecorObjectOpacity(object, opacity) {
+  if (!object) return;
+
+  object.visible = opacity > 0.01;
+  object.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      material.transparent = opacity < 0.999;
+      material.opacity = opacity;
+      material.depthWrite = opacity > 0.92;
+      material.needsUpdate = true;
+    });
+  });
+}
+
+async function addHowToOrderShellBorder(entry, template) {
+  const radius = entry.tierRadius || 0.24;
+  const count = getShellCountForTier(entry, radius);
+  const scale = getShellScaleForCount(template, radius, count);
+  const y = getHowToOrderTierLocalEdgeY(entry, "top");
+  const radialOffset = 0.002;
+
+  for (let i = 0; i < count; i += 1) {
+    const angle = (i / count) * Math.PI * 2;
+    const shell = template.clone(true);
+
+    shell.position.set(
+      Math.cos(angle) * (radius + radialOffset),
+      y,
+      Math.sin(angle) * (radius + radialOffset)
+    );
+    shell.rotation.y = -angle + Math.PI / 2;
+    shell.scale.set(
+      scale * SHELL_BORDER_OVERLAP * HOW_TO_ORDER_SHELL_BORDER_SCALE,
+      scale * 1.08 * HOW_TO_ORDER_SHELL_BORDER_SCALE,
+      scale * 1.12 * HOW_TO_ORDER_SHELL_BORDER_SCALE
+    );
+    shell.userData.isHowToOrderDecor = true;
+    applyShellBorderMaterial(shell, DEFAULT_SHELL_FROSTING_COLOR);
+    entry.decorObject.add(shell);
+  }
+}
+
+async function addHowToOrderSwags(entry, template) {
+  const radius = (entry.tierRadius || 0.24) + SWAG_SURFACE_OFFSET;
+  const swagCount = getSwagCountForTier(entry);
+  const segmentAngle = (Math.PI * 2) / swagCount;
+  const baseY = getHowToOrderTierLocalEdgeY(entry, "bottom") - SHELL_BORDER_BOTTOM_Y_OFFSET;
+  const tierHeight = entry.tierHeight || entry.height || 0.24;
+  const anchorY = baseY + tierHeight * SWAG_ANCHOR_HEIGHT_RATIO;
+  const drop = Math.max(tierHeight * SWAG_DROP_HEIGHT_RATIO, 0.025);
+  const scale = getSwagScaleForTier(template, radius, swagCount);
+
+  for (let swagIndex = 0; swagIndex < swagCount; swagIndex += 1) {
+    const startAngle = (swagIndex / swagCount) * Math.PI * 2;
+    const compressedStartAngle = startAngle + segmentAngle * ((1 - SWAG_HORIZONTAL_COMPRESSION) / 2);
+
+    for (let pieceIndex = 0; pieceIndex < SWAG_PIECES_PER_DRAPE; pieceIndex += 1) {
+      const t = SWAG_PIECES_PER_DRAPE === 1 ? 0.5 : pieceIndex / (SWAG_PIECES_PER_DRAPE - 1);
+      const angle = compressedStartAngle + t * segmentAngle * SWAG_HORIZONTAL_COMPRESSION;
+      const outward = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+      const centerWeight = Math.sin(Math.PI * t);
+      const centerCurve = Math.pow(centerWeight, 1.45);
+      const y = anchorY - centerWeight * drop + centerCurve * tierHeight * SWAG_CENTER_LIFT_HEIGHT_RATIO;
+      const pieceScale = scale * (0.58 + centerCurve * 0.54);
+      const curveSlope = -Math.cos(Math.PI * t) * drop / Math.max(segmentAngle * radius * SWAG_HORIZONTAL_COMPRESSION, 0.001);
+      const swag = template.clone(true);
+
+      swag.position.set(outward.x * radius, y, outward.z * radius);
+      swag.quaternion.copy(getSwagSidewallQuaternion(outward));
+      swag.rotateY(Math.atan(curveSlope) * SWAG_CURVE_ROTATION_STRENGTH);
+      swag.scale.set(pieceScale, pieceScale * (0.54 + centerCurve * 0.1), pieceScale);
+      swag.userData.isHowToOrderDecor = true;
+      applyShellBorderMaterial(swag, DEFAULT_SHELL_FROSTING_COLOR);
+      entry.decorObject.add(swag);
+    }
+  }
+}
+
+async function addHowToOrderDecorToEntry(entry, localLoader) {
+  entry.decorObject = new THREE.Group();
+  entry.decorObject.name = `howToOrderDecor-${entry.size}`;
+  entry.object.add(entry.decorObject);
+
+  const [swagTemplate, shellTemplate] = await Promise.all([
+    loadSwagModel(localLoader),
+    loadShellModel(localLoader)
+  ]);
+
+  await addHowToOrderSwags(entry, swagTemplate);
+  await addHowToOrderShellBorder(entry, shellTemplate);
+  setHowToOrderDecorObjectOpacity(entry.decorObject, 0);
+  entry.decorObject.scale.setScalar(0.96);
+}
+
+async function addHowToOrderStand(localLoader) {
+  const stand = await loadModelScene(HOW_TO_ORDER_STAND_MODEL_SRC, localLoader);
+
+  prepareDecorModelMaterials(stand);
+  normalizeCakeModelBounds(stand);
+  const standBounds = getHowToOrderTierBounds(stand);
+  howToOrderCakeStandTopY = standBounds.maxY;
+  stand.scale.setScalar(HOW_TO_ORDER_STAND_SCALE);
+  stand.position.y = -howToOrderCakeStandTopY * HOW_TO_ORDER_STAND_SCALE;
+  stand.name = "howToOrderStand";
+  setHowToOrderDecorObjectOpacity(stand, 0);
+
+  howToOrderCakeGroup.add(stand);
+  howToOrderCakeStand = stand;
+}
+
+function applyHowToOrderDecorProgress(progress) {
+  howToOrderDecorProgress = clamp01(progress);
+  if (!howToOrderCakeReady || !howToOrderCakeEntries.length) return;
+
+  const frostingProgress = clamp01(howToOrderDecorProgress / HOW_TO_ORDER_FROSTING_PHASE_END);
+  const accentProgress = clamp01(
+    (howToOrderDecorProgress - HOW_TO_ORDER_DECOR_APPEAR_START) / (1 - HOW_TO_ORDER_DECOR_APPEAR_START)
+  );
+  const easedAccentProgress = accentProgress * accentProgress * (3 - 2 * accentProgress);
+
+  HOW_TO_ORDER_DECOR_SEQUENCE.forEach((size, index) => {
+    const entry = howToOrderCakeEntries.find((tierEntry) => tierEntry.size === size);
+    if (!entry?.outerFrostingObject) return;
+
+    const tierProgress = clamp01((frostingProgress * HOW_TO_ORDER_DECOR_SEQUENCE.length) - index);
+    const easedProgress = tierProgress * tierProgress * (3 - 2 * tierProgress);
+    setHowToOrderOuterFrostingOpacity(entry.outerFrostingObject, easedProgress * (entry.revealOpacity ?? 1));
+
+    if (entry.decorObject) {
+      setHowToOrderDecorObjectOpacity(entry.decorObject, easedAccentProgress * (entry.revealOpacity ?? 1));
+      entry.decorObject.scale.setScalar(lerp(0.96, 1, easedAccentProgress));
+    }
+  });
+
+  renderHowToOrderCakeScene();
+}
+
+function applyHowToOrderDeliveryProgress(progress) {
+  howToOrderDeliveryProgress = clamp01(progress);
+  if (!howToOrderCakeReady || !howToOrderCakeGroup) return;
+
+  const easedProgress = howToOrderDeliveryProgress * howToOrderDeliveryProgress * (3 - 2 * howToOrderDeliveryProgress);
+
+  howToOrderCakeGroup.position.y = lerp(
+    howToOrderCakeOnlyOffsetY,
+    howToOrderCakeDeliveryOffsetY || howToOrderCakeOnlyOffsetY,
+    easedProgress
+  );
+  howToOrderCakeGroup.position.z = howToOrderCakeOnlyPositionZ + HOW_TO_ORDER_DELIVERY_RECEDES_Z * easedProgress;
+
+  if (howToOrderCakeStand) {
+    const standScale = HOW_TO_ORDER_STAND_SCALE * lerp(0.98, 1, easedProgress);
+    setHowToOrderDecorObjectOpacity(howToOrderCakeStand, easedProgress);
+    howToOrderCakeStand.scale.setScalar(standScale);
+    howToOrderCakeStand.position.y = -howToOrderCakeStandTopY * standScale;
+  }
+
+  renderHowToOrderCakeScene();
+}
+
+function updateHowToOrderStageReveal(stageRect, stickyTop) {
+  if (!howToOrderSticky || howToOrderStageHasRevealed || howToOrderStageRevealStarted) return;
+  if (stageRect.top > window.innerHeight - stickyTop) return;
+
+  howToOrderStageRevealStarted = true;
+  howToOrderSticky.classList.add("is-revealing");
+
+  const finishReveal = () => {
+    howToOrderStageHasRevealed = true;
+    howToOrderSticky.classList.remove("is-revealing");
+    howToOrderSticky.classList.add("is-revealed");
+  };
+
+  howToOrderSticky.addEventListener("transitionend", finishReveal, { once: true });
+  window.setTimeout(finishReveal, 1100);
+}
+
+function applyHowToOrderCakeSizeProgress(progress) {
+  howToOrderCakeProgress = clamp01(progress);
+  if (!howToOrderCakeReady || !howToOrderCakeGroup || !howToOrderCakeEntries.length) return;
+
+  const twoTierProgress = clamp01((howToOrderCakeProgress - 0.33) / 0.33);
+  const threeTierProgress = clamp01((howToOrderCakeProgress - 0.66) / 0.34);
+  const groupScale = lerp(HOW_TO_ORDER_CAKE_MIN_SCALE, HOW_TO_ORDER_CAKE_MAX_SCALE, howToOrderCakeProgress);
+  let stackTopY = 0;
+
+  howToOrderCakeEntries.forEach((entry, index) => {
+    const visibleProgress = index === 0 ? 1 : index === 1 ? twoTierProgress : threeTierProgress;
+
+    entry.revealOpacity = visibleProgress;
+    entry.object.position.y = entry.basePositionY + stackTopY - entry.minY;
+    entry.object.scale.setScalar(1);
+    setHowToOrderTierOpacity(entry.object, visibleProgress);
+    if (entry.outerFrostingObject) {
+      entry.outerFrostingObject.position.y = entry.outerFrostingBasePositionY + stackTopY - entry.outerFrostingMinY;
+      entry.outerFrostingObject.scale.setScalar(HOW_TO_ORDER_OUTER_FROSTING_SCALE);
+    }
+    stackTopY += entry.height;
+  });
+
+  howToOrderCakeGroup.scale.setScalar(groupScale);
+  howToOrderCakeGroup.position.y = getHowToOrderFinalCenteredOffset();
+  howToOrderCakeGroup.rotation.y = THREE.MathUtils.degToRad(lerp(-8, 8, howToOrderCakeProgress));
+  renderHowToOrderCakeScene();
+}
+
+async function initHowToOrderCakeScene() {
+  if (!howToOrderCake3D || howToOrderCakeRenderer) return;
+
+  const width = howToOrderCake3D.clientWidth || 520;
+  const height = howToOrderCake3D.clientHeight || 360;
+  howToOrderCakeScene = new THREE.Scene();
+  howToOrderCakeScene.background = null;
+  howToOrderCakeCamera = new THREE.PerspectiveCamera(30, width / height, 0.1, 100);
+  howToOrderCakeCamera.position.set(0, 0.72, 2.45);
+  howToOrderCakeCamera.lookAt(0, 0.36, 0);
+
+  howToOrderCakeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  howToOrderCakeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  howToOrderCakeRenderer.setSize(width, height);
+  howToOrderCake3D.innerHTML = "";
+  howToOrderCake3D.appendChild(howToOrderCakeRenderer.domElement);
+
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.1);
+  keyLight.position.set(-2.5, 3.5, 3);
+  howToOrderCakeScene.add(keyLight);
+
+  const fillLight = new THREE.DirectionalLight(0xffffff, 1.35);
+  fillLight.position.set(2.2, 1.8, 2.8);
+  howToOrderCakeScene.add(fillLight);
+
+  const ambient = new THREE.HemisphereLight(0xffffff, 0xe8dccd, 1.55);
+  howToOrderCakeScene.add(ambient);
+
+  howToOrderCakeGroup = new THREE.Group();
+  howToOrderCakeScene.add(howToOrderCakeGroup);
+
+  const localLoader = new GLTFLoader();
+  const tierSizes = [10, 8, 6];
+
+  for (const size of tierSizes) {
+    const gltf = await new Promise((resolve, reject) => {
+      localLoader.load(`models/tier_${size}.glb`, resolve, undefined, reject);
+    });
+
+    const tier = gltf.scene;
+    prepareTierMaterials(tier);
+    applyTierColorsToObject(tier);
+    const normalizedTierBounds = normalizeCakeModelBounds(tier);
+    const tierBounds = getHowToOrderTierBounds(tier);
+    howToOrderCakeGroup.add(tier);
+    const entry = {
+      size,
+      object: tier,
+      tierHeight: normalizedTierBounds.height,
+      tierRadius: normalizedTierBounds.width / 2,
+      basePositionY: tier.position.y,
+      minY: tierBounds.minY,
+      maxY: tierBounds.maxY,
+      height: tierBounds.height,
+      materialStates: getHowToOrderMaterialStates(tier),
+      flavorColors: getHowToOrderFlavorColorSet(
+        HOW_TO_ORDER_FLAVOR_SEQUENCE.find((flavorStep) => flavorStep.size === size)?.flavorSlug
+      ),
+      revealOpacity: 0
+    };
+
+    const outerFrostingSrc = getOuterFrostingModelSrc(size);
+    if (outerFrostingSrc) {
+      const outerFrosting = await loadModelScene(outerFrostingSrc, localLoader);
+      prepareTierMaterials(outerFrosting);
+      normalizeCakeModelBounds(outerFrosting);
+      applyOuterFrostingFinish(outerFrosting, {
+        outerFrosting: OUTER_FROSTING_DECOR,
+        outerFrostingColor: HOW_TO_ORDER_WHITE_FROSTING_COLOR,
+        outerFrostingStripeColor: DEFAULT_STRIPE_FROSTING_COLOR,
+        outerFrostingOmbreColor: DEFAULT_OMBRE_FROSTING_COLOR
+      });
+      const outerFrostingBounds = getHowToOrderTierBounds(outerFrosting);
+      entry.outerFrostingObject = outerFrosting;
+      entry.outerFrostingBasePositionY = outerFrosting.position.y;
+      entry.outerFrostingMinY = outerFrostingBounds.minY;
+      entry.outerFrostingHeight = outerFrostingBounds.height;
+      setHowToOrderOuterFrostingOpacity(outerFrosting, 0);
+      howToOrderCakeGroup.add(outerFrosting);
+    }
+
+    howToOrderCakeEntries.push(entry);
+  }
+
+  const box = new THREE.Box3();
+  howToOrderCakeEntries.forEach((entry) => {
+    box.expandByObject(entry.object);
+  });
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  howToOrderCakeGroup.position.x -= center.x;
+  howToOrderCakeGroup.position.z -= center.z;
+  howToOrderCakeOnlyPositionZ = howToOrderCakeGroup.position.z;
+  howToOrderCakeStackHeight = howToOrderCakeEntries.reduce((total, entry) => total + entry.height, 0);
+  howToOrderCakeOnlyOffsetY = HOW_TO_ORDER_CAKE_FINAL_CENTER_Y - (howToOrderCakeStackHeight * HOW_TO_ORDER_CAKE_MAX_SCALE) / 2;
+
+  await Promise.all(howToOrderCakeEntries.map((entry) => addHowToOrderDecorToEntry(entry, localLoader)));
+  await addHowToOrderStand(localLoader);
+
+  const deliveryBox = new THREE.Box3();
+  howToOrderCakeEntries.forEach((entry) => {
+    deliveryBox.expandByObject(entry.object);
+    if (entry.outerFrostingObject) {
+      deliveryBox.expandByObject(entry.outerFrostingObject);
+    }
+  });
+  if (howToOrderCakeStand) {
+    deliveryBox.expandByObject(howToOrderCakeStand);
+  }
+  howToOrderCakeDeliveryOffsetY = getHowToOrderCenteredOffsetForBounds(deliveryBox) + HOW_TO_ORDER_DELIVERY_LIFT_Y;
+
+  howToOrderCakeReady = true;
+  applyHowToOrderCakeSizeProgress(howToOrderCakeProgress);
+  applyHowToOrderFlavorProgress(howToOrderFlavorProgress);
+  applyHowToOrderDecorProgress(howToOrderDecorProgress);
+  applyHowToOrderDeliveryProgress(howToOrderDeliveryProgress);
+}
+
+function updateHowToOrderScrollytelling() {
+  howToOrderScrollTicking = false;
+
+  if (!howToOrderStage || !howToOrderSticky || !howToOrderVisualStage) {
+    return;
+  }
+
+  const stageRect = howToOrderStage.getBoundingClientRect();
+  const stickyTop = Number.parseFloat(window.getComputedStyle(howToOrderSticky).top) || 0;
+  updateHowToOrderStageReveal(stageRect, stickyTop);
+
+  const scrollableDistance = Math.max(howToOrderStage.offsetHeight - howToOrderSticky.offsetHeight, 1);
+  const overallProgress = clamp01((stickyTop - stageRect.top) / scrollableDistance);
+  const rawStepProgress = overallProgress * HOW_TO_ORDER_STEPS.length;
+  const activeStepIndex = Math.min(Math.floor(rawStepProgress), HOW_TO_ORDER_STEPS.length - 1);
+  const activeStepProgress = clamp01(rawStepProgress - activeStepIndex);
+  const stepProgressValues = HOW_TO_ORDER_STEPS.map((_, index) => {
+    if (index < activeStepIndex) return 1;
+    if (index > activeStepIndex) return 0;
+    return activeStepProgress;
+  });
+  const activeStep = HOW_TO_ORDER_STEPS[activeStepIndex];
+  const cakeSizeProgress = stepProgressValues[0] ?? 0;
+  const servingCount = Math.round(lerp(12, 108, cakeSizeProgress));
+  const accentOpacity = 0;
+  const deliveryOffset = "0px";
+
+  howToOrderVisualStage.dataset.activeStep = String(activeStepIndex);
+  howToOrderVisualStage.style.setProperty("--scrolly-step-progress", activeStepProgress.toFixed(4));
+  howToOrderVisualStage.style.setProperty("--scrolly-accent-opacity", accentOpacity.toFixed(4));
+  howToOrderVisualStage.style.setProperty("--scrolly-delivery-offset", deliveryOffset);
+  applyHowToOrderCakeSizeProgress(cakeSizeProgress);
+  applyHowToOrderFlavorProgress(stepProgressValues[1] ?? 0);
+  applyHowToOrderDecorProgress(stepProgressValues[2] ?? 0);
+  applyHowToOrderDeliveryProgress(stepProgressValues[3] ?? 0);
+
+  if (howToOrderStepNumber) {
+    howToOrderStepNumber.textContent = String(activeStepIndex + 1).padStart(2, "0");
+  }
+
+  if (howToOrderStepTitle) {
+    howToOrderStepTitle.textContent = activeStep.title;
+  }
+
+  if (howToOrderStepCopy) {
+    howToOrderStepCopy.textContent = activeStep.copy;
+  }
+
+  if (howToOrderServingCount) {
+    howToOrderServingCount.textContent = servingCount >= 100 ? "100+ servings" : `${servingCount} servings`;
+  }
+
+  window.howToOrderStepProgress = stepProgressValues;
+}
+
+function scheduleHowToOrderScrollytellingUpdate() {
+  if (howToOrderScrollTicking) {
+    return;
+  }
+
+  howToOrderScrollTicking = true;
+  requestAnimationFrame(updateHowToOrderScrollytelling);
+}
+
+function initHowToOrderScrollytelling() {
+  if (!howToOrderStage || !howToOrderSticky || !howToOrderVisualStage) {
+    return;
+  }
+
+  updateHowToOrderScrollytelling();
+  void initHowToOrderCakeScene();
+  window.addEventListener("scroll", scheduleHowToOrderScrollytellingUpdate, { passive: true });
+  window.addEventListener("resize", () => {
+    resizeHowToOrderCakeScene();
+    scheduleHowToOrderScrollytellingUpdate();
+  });
+}
 
 calculatorForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   debouncedLandingHeroPreviewUpdate.cancel();
-  const guests = parseGuestCountValue(guestCountInput?.value ?? "");
+  const guests = getClampedRecommendationGuests(guestCountInput?.value ?? "");
   initializeCakeFlow(guests);
 });
 
@@ -10118,6 +10872,7 @@ displayCaseTab?.addEventListener("click", () => {
 });
 
 orderTab?.addEventListener("click", () => {
+  window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   returnToLandingPage();
   requestAnimationFrame(() => {
     guestCountInput?.focus();
@@ -10125,7 +10880,7 @@ orderTab?.addEventListener("click", () => {
 });
 
 const savedAppState = getSavedAppState();
-if (savedAppState?.guests && ["recommendations", "customizer", "decor", "summary", "fulfillment"].includes(savedAppState.view)) {
+if (savedAppState?.guests && ["customizer", "decor", "summary", "fulfillment"].includes(savedAppState.view)) {
   initializeCakeFlow(Number(savedAppState.guests), savedAppState);
 } else if (savedAppState?.view === "display-case") {
   openDisplayCasePage();
@@ -10134,12 +10889,240 @@ if (savedAppState?.guests && ["recommendations", "customizer", "decor", "summary
 } else if (savedAppState?.view === "gingerbread") {
   openGingerbreadPage();
 } else if (!document.body.classList.contains("customizer-active")) {
-  showLandingPageView();
+  showHomePageView();
 }
 
 siteLogo?.addEventListener("click", () => {
-  returnToLandingPage();
+  openHomePage();
+});
+
+function createAsciiBirthdayCandle(mount, options = {}) {
+  if (!mount) return null;
+
+  const {
+    scale = 1,
+    frameDurations = [92, 128, 86, 154, 112, 176, 104]
+  } = options;
+  const bodyPattern = [
+    "   :0101#:   ",
+    "   :1010@:   ",
+    "   :0;,.#:   ",
+    "   :,..+@:   ",
+    "   :..,1#:   ",
+    "   :.,10@:   ",
+    "   :,101#:   ",
+    "   :1010@:   ",
+    "   :0101#:   ",
+    "   :1010@:   ",
+    "   :01;,#:   ",
+    "   :1:,.@:   ",
+    "   :0,..#:   ",
+    "   :,..+@:   ",
+    "   :..,1#:   ",
+    "   :.,10@:   ",
+    "   :,101#:   ",
+    "   :1010@:   ",
+    "   :0101#:   ",
+    "   :1010@:   "
+  ];
+  const flameFrames = [
+    [
+      "      '      ",
+      "      .      ",
+      "     ,0      ",
+      "     :1+     ",
+      "    .0#1     ",
+      "    ,+%10    ",
+      "   .0%#10.   ",
+      "  .:+%#10,.  ",
+      "  ,0+%#10:   ",
+      "  :0+%#10;   ",
+      "  `:+%#1;'   ",
+      "   `:010'    ",
+      "     `+'     ",
+      "      ||     "
+    ],
+    [
+      "       '     ",
+      "       1     ",
+      "      .0     ",
+      "     .+1     ",
+      "     :0#1    ",
+      "    .+%10    ",
+      "   .0%#10,   ",
+      "  .:1%#10:.  ",
+      "  ,0+%#10;   ",
+      "  :0+%#1:    ",
+      "  `:+%#1'    ",
+      "   `:010'    ",
+      "     `+'     ",
+      "      ||     "
+    ],
+    [
+      "     '       ",
+      "     1.      ",
+      "     0:      ",
+      "    .1+      ",
+      "    0#1.     ",
+      "   .1%+0     ",
+      "  .0#%+1.    ",
+      "  ,1#%+0:.   ",
+      "  :1#%+01,   ",
+      "  :0#%+10;   ",
+      "  `;%#10'    ",
+      "   `:101'    ",
+      "     `+'     ",
+      "      ||     "
+    ],
+    [
+      "      .      ",
+      "      '      ",
+      "     .0      ",
+      "     :1+     ",
+      "    .0#1     ",
+      "    :+%10    ",
+      "   ,1%#10    ",
+      "  .:0%#10,.  ",
+      "  ,0+%#10:   ",
+      "  ;0+%#10:   ",
+      "  `:+%#1;'   ",
+      "   `:010'    ",
+      "     `+'     ",
+      "      ||     "
+    ],
+    [
+      "       `     ",
+      "       1     ",
+      "      .0     ",
+      "      1+:    ",
+      "     .1#0    ",
+      "    .01%+    ",
+      "   .01#%0.   ",
+      "  .:01#%+,.  ",
+      "  :01#%+0,   ",
+      "  ;01#%+0:   ",
+      "  `;1#%+:'   ",
+      "   `010:'    ",
+      "     `+'     ",
+      "      ||     "
+    ],
+    [
+      "     .       ",
+      "     '1      ",
+      "      0      ",
+      "     :1+     ",
+      "    .0#1     ",
+      "   .1%+0     ",
+      "   0#%+10.   ",
+      "  :1#%+01,   ",
+      "  :0#%+10.   ",
+      "  ;0#%+10:   ",
+      "  `;%#10'    ",
+      "   `:101'    ",
+      "     `+'     ",
+      "      ||     "
+    ],
+    [
+      "      `      ",
+      "      1      ",
+      "      0.     ",
+      "     101     ",
+      "    .1+0     ",
+      "    10#%     ",
+      "   .10#%1    ",
+      "  .:10#%1.   ",
+      "  ,10#%+0:   ",
+      "  :10#%+0;   ",
+      "  `:0#%+;'   ",
+      "   `1010'    ",
+      "     `+'     ",
+      "      ||     "
+    ]
+  ];
+  const pre = document.createElement("pre");
+  let tick = 0;
+  let timeoutId = null;
+
+  mount.style.setProperty("--ascii-candle-scale", String(scale));
+  mount.textContent = "";
+  mount.appendChild(pre);
+
+  const render = () => {
+    const flame = flameFrames[tick % flameFrames.length];
+
+    pre.textContent = [...flame, ...bodyPattern].join("\n");
+    tick += 1;
+  };
+  const start = () => {
+    if (timeoutId || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const scheduleNextFrame = () => {
+      render();
+      timeoutId = window.setTimeout(
+        scheduleNextFrame,
+        frameDurations[tick % frameDurations.length]
+      );
+    };
+
+    timeoutId = window.setTimeout(scheduleNextFrame, frameDurations[0]);
+  };
+  const stop = () => {
+    if (!timeoutId) return;
+    window.clearTimeout(timeoutId);
+    timeoutId = null;
+  };
+
+  render();
+  start();
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stop();
+    } else {
+      start();
+    }
+  });
+
+  return {
+    render,
+    start,
+    stop,
+    setScale(nextScale) {
+      mount.style.setProperty("--ascii-candle-scale", String(nextScale));
+    }
+  };
+}
+
+createAsciiBirthdayCandle(document.getElementById("vote-barn-candle"), {
+  scale: 1
+});
+document.querySelectorAll(".home-hero-candle").forEach((candle, index) => {
+  createAsciiBirthdayCandle(candle, {
+    scale: index === 1 ? 0.94 : 0.86,
+    frameDurations: index === 1 ? [190, 245, 168, 280, 214, 310] : [205, 260, 182, 296, 228, 330]
+  });
 });
 
 void initPasswordGateCake();
 initLandingHero();
+initHowToOrderScrollytelling();
+
+function printConsoleCakeSupplyEasterEgg() {
+  console.log(`        i  i  i
+        |  |  |
+      __|__|__|__
+     |~~~~~~~~~~~|
+     |           |
+   __|___________|__
+  |~~~~~~~~~~~~~~~~~|
+  |                 |
+  |_________________|`);
+  console.log(
+    "%cCAKE SUPPLY",
+    "font-family: Georgia, 'Times New Roman', serif; font-size: 22px; letter-spacing: 0.22em;"
+  );
+  console.log(
+    "%cyou found the crumbs.",
+    "font-size: 11px; font-style: italic;"
+  );
+}
+
+printConsoleCakeSupplyEasterEgg();
